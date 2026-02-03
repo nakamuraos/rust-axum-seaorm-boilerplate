@@ -63,7 +63,7 @@ seaography = { version = "~1.1.4", features = [
 ] }
 async-graphql-axum = "7.0.17"
 async-graphql = "7.0.17"
-jsonwebtoken = { version = "10.2.0", features = ["rust_crypto"] }
+jsonwebtoken = { version = "10.3.0", features = ["rust_crypto"] }
 base64 = "0.22.1"
 bcrypt = "0.17.1"
 
