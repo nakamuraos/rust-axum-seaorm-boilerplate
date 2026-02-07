@@ -12,9 +12,9 @@
 
 A production-ready REST + GraphQL API boilerplate built with [Axum](https://github.com/tokio-rs/axum), [Sea-ORM](https://github.com/SeaQL/sea-orm), and PostgreSQL.
 
-![swagger](./docs/images/swagger.png)
-![graphql](./docs/images/graphql.png)
-![wrk](./docs/images/wrk.png)
+![swagger](https://raw.githubusercontent.com/nakamuraos/rust-axum-seaorm-boilerplate/master/docs/images/swagger.png)
+![graphql](https://raw.githubusercontent.com/nakamuraos/rust-axum-seaorm-boilerplate/master/docs/images/graphql.png)
+![wrk](https://raw.githubusercontent.com/nakamuraos/rust-axum-seaorm-boilerplate/master/docs/images/wrk.png)
 
 ## Features
 
@@ -22,11 +22,11 @@ A production-ready REST + GraphQL API boilerplate built with [Axum](https://gith
 - **GraphQL** with [Seaography](https://github.com/SeaQL/seaography) + field-level guards
 - **OpenAPI/Swagger** auto-generated docs via [utoipa](https://github.com/juhaku/utoipa)
 - **JWT authentication** with bcrypt password hashing
-- **Role-based access control** — Admin, User roles with auth/admin/owner guards
+- **Role-based access control** - Admin, User roles with auth/admin/owner guards
 - **Sea-ORM** with auto-migrations and connection pooling
-- **Pagination** — page-based and cursor-based
-- **Request validation** — `ValidatedJson` / `ValidatedPath` extractors
-- **Middleware** — CORS, request ID (UUID v7), timeout, tracing
+- **Pagination** - page-based and cursor-based
+- **Request validation** - `ValidatedJson` / `ValidatedPath` extractors
+- **Middleware** - CORS, request ID (UUID v7), timeout, tracing
 - **Structured JSON logging** via [tracing](https://github.com/tokio-rs/tracing)
 - **Docker** support with multi-stage builds
 
@@ -60,16 +60,16 @@ src/
 
 | Method     | Path                    | Auth        | Description                  |
 | ---------- | ----------------------- | ----------- | ---------------------------- |
-| `POST`     | `/api/v1/auth/register` | —           | Register a new user          |
-| `POST`     | `/api/v1/auth/login`    | —           | Login, returns JWT           |
-| `GET`      | `/api/v1/health`        | —           | Health check                 |
+| `POST`     | `/api/v1/auth/register` | -           | Register a new user          |
+| `POST`     | `/api/v1/auth/login`    | -           | Login, returns JWT           |
+| `GET`      | `/api/v1/health`        | -           | Health check                 |
 | `GET`      | `/api/v1/users`         | Admin       | List users (paginated)       |
 | `POST`     | `/api/v1/users`         | Admin       | Create user                  |
 | `GET`      | `/api/v1/users/:id`     | Owner/Admin | Get user                     |
 | `PUT`      | `/api/v1/users/:id`     | Owner/Admin | Update user                  |
 | `DELETE`   | `/api/v1/users/:id`     | Owner/Admin | Delete user                  |
 | `GET/POST` | `/graphql`              | JWT         | GraphQL playground & queries |
-| `GET`      | `/docs`                 | —           | Swagger UI                   |
+| `GET`      | `/docs`                 | -           | Swagger UI                   |
 
 ## Getting Started
 
@@ -80,12 +80,30 @@ src/
 
 ### 1. Clone & configure
 
+<details open>
+<summary>Option A: Using cargo-generate (recommended for new projects)</summary>
+
+```shell
+cargo install cargo-generate
+cargo generate nakamuraos/rust-axum-seaorm-boilerplate
+cd <your-project-name>
+cp .env.sample .env
+# Edit .env - at minimum set DATABASE_URL and JWT_SECRET
+```
+
+</details>
+
+<details>
+<summary>Option B: Manual clone</summary>
+
 ```shell
 git clone https://github.com/nakamuraos/rust-axum-seaorm-boilerplate
 cd rust-axum-seaorm-boilerplate
 cp .env.sample .env
-# Edit .env — at minimum set DATABASE_URL and JWT_SECRET
+# Edit .env - at minimum set DATABASE_URL and JWT_SECRET
 ```
+
+</details>
 
 ### 2. Start PostgreSQL
 
@@ -112,12 +130,15 @@ The server starts at `http://localhost:8080`. Migrations and seeds run automatic
 You can also run them standalone without starting the server:
 
 ```shell
-cargo run --bin db -- migrate   # Run all pending migrations
-cargo run --bin db -- seed      # Run all database seeds
-cargo run --bin db -- setup     # Run migrations then seeds
+# Run all pending migrations
+cargo run --bin db -- migrate
+# Run all database seeds
+cargo run --bin db -- seed
+# Run migrations then seeds
+cargo run --bin db -- setup
 ```
 
-Seeds are idempotent — they check if each user already exists before inserting, so they are safe to run multiple times.
+Seeds are idempotent - they check if each user already exists before inserting, so they are safe to run multiple times.
 
 Default seed users:
 
@@ -164,29 +185,29 @@ Executes all unit and integration tests.
 
 ```shell
 cp .env.sample .env
-docker-compose up               # or -d for detached
-docker-compose down             # stop
+docker-compose up    # or -d for detached
+docker-compose down  # stop
 ```
 
 ## Environment Variables
 
-| Variable                  | Default      | Description                      |
-| ------------------------- | ------------ | -------------------------------- |
-| `APP_ENV`                 | —            | `development` or `production`    |
-| `PORT`                    | `8080`       | Server port                      |
-| `DATABASE_URL`            | —            | PostgreSQL connection string     |
-| `DATABASE_POOL_MAX_SIZE`  | `10`         | Max DB connections               |
-| `DATABASE_TIMEOUT`        | `5`          | Connection timeout (seconds)     |
-| `DATABASE_RUN_MIGRATIONS` | `true` (dev) | Auto-run migrations on startup   |
-| `DATABASE_RUN_SEEDS`      | `false` (dev)| Auto-run seeds on startup        |
-| `JWT_SECRET`              | —            | JWT signing key                  |
-| `JWT_EXPIRATION_DAYS`     | `7`          | Token lifetime                   |
-| `BCRYPT_COST`             | `12`         | Password hashing cost (4–31)     |
-| `SWAGGER_ENDPOINT`        | `/docs`      | Swagger UI path                  |
-| `SWAGGER_BASIC_AUTH`      | —            | Optional `user:pass` for Swagger |
-| `GRAPHQL_ENDPOINT`        | `/graphql`   | GraphQL path                     |
-| `GRAPHQL_BASIC_AUTH`      | —            | Optional `user:pass` for GraphQL |
-| `RUST_LOG`                | `debug`      | Log level filter                 |
+| Variable                  | Default       | Description                      |
+| ------------------------- | ------------- | -------------------------------- |
+| `APP_ENV`                 | -             | `development` or `production`    |
+| `PORT`                    | `8080`        | Server port                      |
+| `DATABASE_URL`            | -             | PostgreSQL connection string     |
+| `DATABASE_POOL_MAX_SIZE`  | `10`          | Max DB connections               |
+| `DATABASE_TIMEOUT`        | `5`           | Connection timeout (seconds)     |
+| `DATABASE_RUN_MIGRATIONS` | `true` (dev)  | Auto-run migrations on startup   |
+| `DATABASE_RUN_SEEDS`      | `false` (dev) | Auto-run seeds on startup        |
+| `JWT_SECRET`              | -             | JWT signing key                  |
+| `JWT_EXPIRATION_DAYS`     | `7`           | Token lifetime                   |
+| `BCRYPT_COST`             | `12`          | Password hashing cost (4-31)     |
+| `SWAGGER_ENDPOINT`        | `/docs`       | Swagger UI path                  |
+| `SWAGGER_BASIC_AUTH`      | -             | Optional `user:pass` for Swagger |
+| `GRAPHQL_ENDPOINT`        | `/graphql`    | GraphQL path                     |
+| `GRAPHQL_BASIC_AUTH`      | -             | Optional `user:pass` for GraphQL |
+| `RUST_LOG`                | `debug`       | Log level filter                 |
 
 ## Production
 
