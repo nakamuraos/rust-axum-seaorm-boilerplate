@@ -6,12 +6,18 @@ use validator::Validate;
 
 use crate::modules::users::entities::Model;
 
-#[derive(Serialize, Deserialize, ToSchema, Validate)]
+#[derive(Debug, Clone, Serialize, Deserialize, ToSchema, Validate)]
 pub struct UserCreate {
   #[validate(email(message = "invalid email format"))]
   pub email: String,
   #[validate(length(min = 8, max = 64, message = "must be between 8 and 64 characters"))]
   pub password: String,
+  #[validate(length(min = 1, max = 100, message = "must be between 1 and 100 characters"))]
+  pub name: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, ToSchema, Validate)]
+pub struct UserUpdate {
   #[validate(length(min = 1, max = 100, message = "must be between 1 and 100 characters"))]
   pub name: String,
 }

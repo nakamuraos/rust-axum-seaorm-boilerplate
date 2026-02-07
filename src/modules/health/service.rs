@@ -1,7 +1,9 @@
-use serde_json::{json, Value};
+use crate::modules::health::dto::Healthy;
 
-pub async fn index() -> Value {
-  json!({ "status": "ok" })
+pub async fn index() -> Healthy {
+  Healthy {
+    status: "ok".to_string(),
+  }
 }
 
 #[cfg(test)]
@@ -11,13 +13,12 @@ mod tests {
   #[tokio::test]
   async fn test_health_index_returns_ok() {
     let result = index().await;
-    assert_eq!(result, json!({ "status": "ok" }));
+    assert_eq!(result.status, "ok");
   }
 
   #[tokio::test]
   async fn test_health_index_has_status_field() {
     let result = index().await;
-    assert!(result.get("status").is_some());
-    assert_eq!(result.get("status").unwrap(), "ok");
+    assert!(!result.status.is_empty());
   }
 }

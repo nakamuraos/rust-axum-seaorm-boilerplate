@@ -1,10 +1,6 @@
 use axum::Json;
-use serde_json::Value;
 
-use crate::{
-  common::api_error::ApiError,
-  modules::health::{dto::Healthy, service},
-};
+use crate::modules::health::{dto::Healthy, service};
 
 #[utoipa::path(
   get,
@@ -12,10 +8,10 @@ use crate::{
   path = "/api/v1/health",
   operation_id = "healthIndex",
   responses(
-      (status = 200, description = "Heathy check", body = [Healthy])
+      (status = 200, description = "Health check", body = Healthy)
   )
 )]
-pub async fn index() -> Result<Json<Value>, ApiError> {
+pub async fn index() -> Json<Healthy> {
   let result = service::index().await;
-  Ok(Json(result))
+  Json(result)
 }

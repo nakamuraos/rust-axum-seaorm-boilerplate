@@ -2,7 +2,6 @@ use anyhow::anyhow;
 use bcrypt::{hash, verify, DEFAULT_COST};
 use jsonwebtoken::{encode, EncodingKey, Header};
 use sea_orm::{ActiveModelTrait, ColumnTrait, DatabaseConnection, EntityTrait, QueryFilter};
-use serde_json::Value;
 use uuid::Uuid;
 
 use crate::common::api_error::ApiError;
@@ -11,7 +10,10 @@ use crate::modules::auth::guards::auth_guard::Claims;
 use crate::modules::users::dto::UserDto;
 use crate::modules::users::entities::{self as UserEntities};
 
-pub async fn register(conn: &DatabaseConnection, req: RegisterRequest) -> Result<Value, ApiError> {
+pub async fn register(
+  conn: &DatabaseConnection,
+  req: RegisterRequest,
+) -> Result<AuthResponse, ApiError> {
   // Hash password
   let password_hash = hash(req.password.as_bytes(), DEFAULT_COST)
     .map_err(|e| ApiError::InternalError(anyhow!("Failed to hash password: {}", e)))?;
@@ -36,15 +38,13 @@ pub async fn register(conn: &DatabaseConnection, req: RegisterRequest) -> Result
   // Generate JWT token
   let token = generate_token(&user)?;
 
-  let response = AuthResponse {
+  Ok(AuthResponse {
     token,
-    user: UserDto { ..user.into() },
-  };
-
-  Ok(serde_json::to_value(response).map_err(|e| ApiError::InternalError(anyhow!(e)))?)
+    user: UserDto::from(user),
+  })
 }
 
-pub async fn login(conn: &DatabaseConnection, req: LoginRequest) -> Result<Value, ApiError> {
+pub async fn login(conn: &DatabaseConnection, req: LoginRequest) -> Result<AuthResponse, ApiError> {
   // Find user by email
   let user = UserEntities::Entity::find()
     .filter(UserEntities::Column::Email.eq(req.email))
@@ -62,12 +62,10 @@ pub async fn login(conn: &DatabaseConnection, req: LoginRequest) -> Result<Value
   // Generate JWT token
   let token = generate_token(&user)?;
 
-  let response = AuthResponse {
+  Ok(AuthResponse {
     token,
-    user: UserDto { ..user.into() },
-  };
-
-  Ok(serde_json::to_value(response).map_err(|e| ApiError::InternalError(anyhow!(e)))?)
+    user: UserDto::from(user),
+  })
 }
 
 fn generate_token(user: &UserEntities::Model) -> Result<String, ApiError> {

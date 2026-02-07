@@ -1,5 +1,4 @@
 use axum::{extract::State, Json};
-use serde_json::Value;
 
 use crate::app::AppState;
 use crate::common::api_error::ApiError;
@@ -23,7 +22,7 @@ use crate::modules::auth::service;
 pub async fn register(
   State(state): State<AppState>,
   ValidatedJson(req): ValidatedJson<RegisterRequest>,
-) -> Result<Json<Value>, ApiError> {
+) -> Result<Json<AuthResponse>, ApiError> {
   let result = service::register(&state.db.conn, req).await?;
   Ok(Json(result))
 }
@@ -44,7 +43,7 @@ pub async fn register(
 pub async fn login(
   State(state): State<AppState>,
   ValidatedJson(req): ValidatedJson<LoginRequest>,
-) -> Result<Json<Value>, ApiError> {
+) -> Result<Json<AuthResponse>, ApiError> {
   let result = service::login(&state.db.conn, req).await?;
   Ok(Json(result))
 }

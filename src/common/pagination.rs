@@ -69,6 +69,15 @@ pub struct CursorMeta {
   pub next_cursor: Option<String>,
 }
 
+/// Unified paginated response that supports both page and cursor modes.
+/// Uses `#[serde(untagged)]` so the JSON output matches the inner variant directly.
+#[derive(Debug, Serialize, ToSchema)]
+#[serde(untagged)]
+pub enum PaginatedResponse<T: Serialize> {
+  Page(PageResponse<T>),
+  Cursor(CursorResponse<T>),
+}
+
 #[cfg(test)]
 mod tests {
   use super::*;
