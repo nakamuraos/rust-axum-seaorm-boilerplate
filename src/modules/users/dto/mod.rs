@@ -2,13 +2,17 @@ use chrono::SecondsFormat;
 use sea_orm::ActiveEnum;
 use serde::{Deserialize, Serialize};
 use utoipa::ToSchema;
+use validator::Validate;
 
 use crate::modules::users::entities::Model;
 
-#[derive(Serialize, Deserialize, ToSchema)]
+#[derive(Serialize, Deserialize, ToSchema, Validate)]
 pub struct UserCreate {
+  #[validate(email(message = "invalid email format"))]
   pub email: String,
+  #[validate(length(min = 8, max = 64, message = "must be between 8 and 64 characters"))]
   pub password: String,
+  #[validate(length(min = 1, max = 100, message = "must be between 1 and 100 characters"))]
   pub name: String,
 }
 
@@ -47,6 +51,120 @@ impl From<Model> for UserDto {
 #[cfg(test)]
 mod tests {
   use super::*;
+  use validator::Validate;
+
+  // --- UserCreate validation tests ---
+
+  #[test]
+  fn test_user_create_valid() {
+    let user = UserCreate {
+      email: "user@example.com".to_string(),
+      password: "password123".to_string(),
+      name: "Test User".to_string(),
+    };
+    assert!(user.validate().is_ok());
+  }
+
+  #[test]
+  fn test_user_create_invalid_email() {
+    let user = UserCreate {
+      email: "not-an-email".to_string(),
+      password: "password123".to_string(),
+      name: "Test User".to_string(),
+    };
+    let err = user.validate().unwrap_err();
+    assert!(err.field_errors().contains_key("email"));
+  }
+
+  #[test]
+  fn test_user_create_empty_email() {
+    let user = UserCreate {
+      email: "".to_string(),
+      password: "password123".to_string(),
+      name: "Test User".to_string(),
+    };
+    let err = user.validate().unwrap_err();
+    assert!(err.field_errors().contains_key("email"));
+  }
+
+  #[test]
+  fn test_user_create_password_too_short() {
+    let user = UserCreate {
+      email: "user@example.com".to_string(),
+      password: "short".to_string(),
+      name: "Test User".to_string(),
+    };
+    let err = user.validate().unwrap_err();
+    assert!(err.field_errors().contains_key("password"));
+  }
+
+  #[test]
+  fn test_user_create_password_too_long() {
+    let user = UserCreate {
+      email: "user@example.com".to_string(),
+      password: "a".repeat(65),
+      name: "Test User".to_string(),
+    };
+    let err = user.validate().unwrap_err();
+    assert!(err.field_errors().contains_key("password"));
+  }
+
+  #[test]
+  fn test_user_create_name_empty() {
+    let user = UserCreate {
+      email: "user@example.com".to_string(),
+      password: "password123".to_string(),
+      name: "".to_string(),
+    };
+    let err = user.validate().unwrap_err();
+    assert!(err.field_errors().contains_key("name"));
+  }
+
+  #[test]
+  fn test_user_create_name_too_long() {
+    let user = UserCreate {
+      email: "user@example.com".to_string(),
+      password: "password123".to_string(),
+      name: "a".repeat(101),
+    };
+    let err = user.validate().unwrap_err();
+    assert!(err.field_errors().contains_key("name"));
+  }
+
+  #[test]
+  fn test_user_create_all_fields_invalid() {
+    let user = UserCreate {
+      email: "bad".to_string(),
+      password: "short".to_string(),
+      name: "".to_string(),
+    };
+    let err = user.validate().unwrap_err();
+    assert!(err.field_errors().contains_key("email"));
+    assert!(err.field_errors().contains_key("password"));
+    assert!(err.field_errors().contains_key("name"));
+  }
+
+  #[test]
+  fn test_user_create_password_exact_min() {
+    let user = UserCreate {
+      email: "user@example.com".to_string(),
+      password: "a".repeat(8),
+      name: "Test User".to_string(),
+    };
+    assert!(user.validate().is_ok());
+  }
+
+  #[test]
+  fn test_user_create_password_exact_max() {
+    let user = UserCreate {
+      email: "user@example.com".to_string(),
+      password: "a".repeat(64),
+      name: "Test User".to_string(),
+    };
+    assert!(user.validate().is_ok());
+  }
+
+  // --- Serialization tests ---
 
   #[test]
   fn test_user_create_serialization() {

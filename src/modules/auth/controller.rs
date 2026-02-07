@@ -3,6 +3,7 @@ use serde_json::Value;
 
 use crate::app::AppState;
 use crate::common::api_error::ApiError;
+use crate::common::validated_json::ValidatedJson;
 use crate::modules::auth::dto::{AuthResponse, LoginRequest, RegisterRequest};
 use crate::modules::auth::service;
 
@@ -14,13 +15,14 @@ use crate::modules::auth::service;
   request_body = RegisterRequest,
   responses(
     (status = 200, description = "Register successful", body = AuthResponse),
+    (status = 400, description = "Validation error"),
     (status = 409, description = "Email already exists"),
     (status = 500, description = "Internal server error")
   )
 )]
 pub async fn register(
   State(state): State<AppState>,
-  Json(req): Json<RegisterRequest>,
+  ValidatedJson(req): ValidatedJson<RegisterRequest>,
 ) -> Result<Json<Value>, ApiError> {
   let result = service::register(&state.db.conn, req).await?;
   Ok(Json(result))
@@ -34,13 +36,14 @@ pub async fn register(
   request_body = LoginRequest,
   responses(
     (status = 200, description = "Login successful", body = AuthResponse),
+    (status = 400, description = "Validation error"),
     (status = 401, description = "Invalid credentials"),
     (status = 500, description = "Internal server error")
   )
 )]
 pub async fn login(
   State(state): State<AppState>,
-  Json(req): Json<LoginRequest>,
+  ValidatedJson(req): ValidatedJson<LoginRequest>,
 ) -> Result<Json<Value>, ApiError> {
   let result = service::login(&state.db.conn, req).await?;
   Ok(Json(result))

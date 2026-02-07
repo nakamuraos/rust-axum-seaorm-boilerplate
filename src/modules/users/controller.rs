@@ -5,6 +5,7 @@ use axum::{
 use serde_json::Value;
 use uuid::Uuid;
 
+use crate::common::validated_json::ValidatedJson;
 use crate::modules::users::dto::UserCreate;
 use crate::{app::AppState, modules::users::dto::UserDto};
 use crate::{common::api_error::ApiError, modules::users::service};
@@ -41,7 +42,7 @@ pub async fn index(State(state): State<AppState>) -> Result<Json<Value>, ApiErro
 )]
 pub async fn create(
   State(state): State<AppState>,
-  Json(user): Json<UserCreate>,
+  ValidatedJson(user): ValidatedJson<UserCreate>,
 ) -> Result<Json<Value>, ApiError> {
   let result = service::create(&state.db.conn, user.email, user.password, user.name).await?;
   Ok(Json(result))
@@ -93,7 +94,7 @@ pub async fn show(
 pub async fn update(
   State(state): State<AppState>,
   Path(user_id): Path<String>,
-  Json(user): Json<UserCreate>,
+  ValidatedJson(user): ValidatedJson<UserCreate>,
 ) -> Result<Json<Value>, ApiError> {
   let id = Uuid::parse_str(&user_id)
     .map_err(|_| ApiError::InvalidRequest("Invalid user ID".to_string()))?;
