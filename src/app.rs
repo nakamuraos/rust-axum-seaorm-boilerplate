@@ -1,20 +1,8 @@
-use async_graphql::{dynamic, http::GraphiQLSource};
-use async_graphql_axum::{GraphQLRequest, GraphQLResponse};
-use axum::{
-  extract::State,
-  response::Html,
-  routing::{get, post},
-  Router,
-};
-use utoipa::OpenApi;
-use utoipa_swagger_ui::{BasicAuth, Config as SwaggerConfig, SwaggerUi};
+use axum::Router;
 
-use crate::common::utils;
-use crate::common::{cfg::Config, middlewares, telemetry};
+use crate::common::{api_doc, config::telemetry, config::Config, graphql, middlewares};
 use crate::database::Db;
-use crate::doc;
-use crate::modules::{self, auth::guards::auth_guard};
-use crate::query_root;
+use crate::modules;
 
 #[derive(Clone)]
 pub struct AppState {
@@ -51,60 +39,10 @@ pub fn router(cfg: Config, db: Db) -> Router {
   let router = modules::router(axum::extract::State(app_state.clone()));
 
   // Create the API documentation using OpenAPI and Swagger UI.
-  let api_doc = SwaggerUi::new(app_state.cfg.swagger_endpoint.clone())
-    .url(
-      app_state.cfg.swagger_endpoint.clone() + "/api-doc/openapi.json",
-      doc::ApiDoc::openapi(),
-    )
-    .config({
-      let mut config = SwaggerConfig::default().persist_authorization(true);
-      if !app_state.cfg.swagger_basic_auth.is_empty() {
-        let parts: Vec<&str> = app_state.cfg.swagger_basic_auth.split(':').collect();
-        if parts.len() == 2 {
-          config = config.basic_auth(BasicAuth {
-            username: parts[0].to_string(),
-            password: parts[1].to_string(),
-          });
-        } else {
-          panic!("Invalid format for swagger_basic_auth. Expected 'username:password'.");
-        }
-      }
-      config
-    });
+  let api_doc = api_doc::swagger_ui(&app_state.cfg);
 
-  // Create the GraphQL schema using the query root.
-  let schema = query_root::schema(app_state.db.conn.clone(), None, None).unwrap();
-  let graphql_router = Router::new().nest(
-    &app_state.cfg.graphql_endpoint,
-    Router::new()
-      .merge({
-        let mut router = Router::new().route("/", get(graphql_playground));
-        if !app_state.cfg.graphql_basic_auth.is_empty() {
-          let parts: Vec<&str> = app_state.cfg.graphql_basic_auth.split(':').collect();
-          if parts.len() == 2 {
-            router = router.layer(axum::middleware::from_fn({
-              let auth_config = app_state.clone();
-              move |req, next| {
-                let auth_config = auth_config.clone();
-                async move { utils::auth::basic_auth_layer(State(auth_config), req, next).await }
-              }
-            }));
-          } else {
-            panic!("Invalid format for graphql_basic_auth. Expected 'username:password'.");
-          }
-        }
-        router
-      })
-      .merge(
-        Router::new()
-          .route("/", post(graphql_handler))
-          .with_state(schema)
-          .layer(axum::middleware::from_fn_with_state(
-            app_state.clone(),
-            auth_guard,
-          )),
-      ),
-  );
+  // Create the GraphQL router with playground and query handler.
+  let graphql_router = graphql::router(app_state.clone());
 
   // Combine all the routes and apply the middleware layers.
   // The order of the layers is important. The first layer is the outermost layer.
@@ -119,16 +57,4 @@ pub fn router(cfg: Config, db: Db) -> Router {
     .layer(trace_layer)
     .layer(request_id_layer)
     .with_state(app_state)
-}
-
-async fn graphql_handler(
-  schema: axum::extract::State<dynamic::Schema>,
-  req: GraphQLRequest,
-) -> GraphQLResponse {
-  schema.execute(req.into_inner()).await.into()
-}
-
-async fn graphql_playground(State(state): State<AppState>) -> Html<String> {
-  let endpoint = &state.cfg.graphql_endpoint;
-  Html(GraphiQLSource::build().endpoint(endpoint).finish())
 }

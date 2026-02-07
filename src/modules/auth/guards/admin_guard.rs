@@ -1,7 +1,7 @@
 use axum::{extract::Request, middleware::Next, response::Response};
 use sea_orm::ActiveEnum;
 
-use crate::common::api_error::ApiError;
+use crate::common::errors::ApiError;
 use crate::modules::users::dto::UserDto;
 use crate::modules::users::enums::UserRole;
 

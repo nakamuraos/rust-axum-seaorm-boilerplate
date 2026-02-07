@@ -6,7 +6,7 @@ use sea_orm_migration::MigratorTrait;
 use std::time::Duration;
 use tracing::info;
 
-use crate::common::cfg::Config;
+use crate::common::config::Config;
 use crate::database::migrations::Migrator;
 
 #[derive(Clone)]

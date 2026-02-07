@@ -1,8 +1,8 @@
 use axum::{extract::State, Json};
 
 use crate::app::AppState;
-use crate::common::api_error::ApiError;
-use crate::common::validation::ValidatedJson;
+use crate::common::errors::ApiError;
+use crate::common::extractors::ValidatedJson;
 use crate::modules::auth::dto::{AuthResponse, LoginRequest, RegisterRequest};
 use crate::modules::auth::service;
 

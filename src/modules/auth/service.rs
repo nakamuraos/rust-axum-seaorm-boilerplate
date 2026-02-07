@@ -4,8 +4,8 @@ use jsonwebtoken::{encode, EncodingKey, Header};
 use sea_orm::{ActiveModelTrait, ColumnTrait, DatabaseConnection, EntityTrait, QueryFilter};
 use uuid::Uuid;
 
-use crate::common::api_error::ApiError;
-use crate::common::cfg::Config;
+use crate::common::config::Config;
+use crate::common::errors::ApiError;
 use crate::modules::auth::dto::{AuthResponse, LoginRequest, RegisterRequest};
 use crate::modules::auth::guards::auth_guard::Claims;
 use crate::modules::users::dto::UserDto;

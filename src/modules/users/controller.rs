@@ -4,10 +4,11 @@ use axum::{
 };
 use uuid::Uuid;
 
+use crate::common::errors::ApiError;
+use crate::common::extractors::{ValidatedJson, ValidatedPath};
 use crate::common::pagination::{PaginatedResponse, PaginationParams};
-use crate::common::validation::{ValidatedJson, ValidatedPath};
 use crate::modules::users::dto::{UserCreate, UserDto, UserUpdate};
-use crate::{app::AppState, common::api_error::ApiError, modules::users::service};
+use crate::{app::AppState, modules::users::service};
 
 #[utoipa::path(
   get,

@@ -4,7 +4,7 @@ use axum::{
 };
 use serde::de::DeserializeOwned;
 
-use crate::common::api_error::ApiError;
+use crate::common::errors::ApiError;
 
 /// A custom Path extractor that returns `ApiError` on rejection.
 ///

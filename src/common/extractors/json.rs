@@ -5,7 +5,7 @@ use axum::{
 use serde::de::DeserializeOwned;
 use validator::Validate;
 
-use crate::common::api_error::ApiError;
+use crate::common::errors::ApiError;
 
 /// A custom JSON extractor that validates the request body after deserialization.
 ///

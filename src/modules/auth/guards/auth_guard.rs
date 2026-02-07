@@ -4,7 +4,7 @@ use jsonwebtoken::{decode, DecodingKey, Validation};
 use serde::{Deserialize, Serialize};
 
 use crate::app::AppState;
-use crate::common::api_error::ApiError;
+use crate::common::errors::ApiError;
 use crate::modules::users::dto::UserDto;
 
 #[derive(Debug, Default, Serialize, Deserialize)]

@@ -5,8 +5,8 @@ use sea_orm::{
 };
 use uuid::Uuid;
 
-use crate::common::api_error::ApiError;
-use crate::common::cfg::Config;
+use crate::common::config::Config;
+use crate::common::errors::ApiError;
 use crate::common::pagination::{
   CursorMeta, CursorResponse, PageMeta, PageResponse, PaginatedResponse, PaginationParams,
 };

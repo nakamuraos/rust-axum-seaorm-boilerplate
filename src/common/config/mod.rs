@@ -1,3 +1,6 @@
+pub mod shutdown;
+pub mod telemetry;
+
 use serde::Deserialize;
 use std::{
   net::{Ipv6Addr, SocketAddr},
