@@ -1,16 +1,103 @@
 use bcrypt::{hash, DEFAULT_COST};
-use sea_orm::{ActiveModelTrait, ColumnTrait, DatabaseConnection, EntityTrait, QueryFilter, Set};
+use sea_orm::{
+  ActiveModelTrait, ColumnTrait, DatabaseConnection, EntityTrait, PaginatorTrait, QueryFilter,
+  QueryOrder, QuerySelect, Set,
+};
 use uuid::Uuid;
 
 use crate::common::api_error::ApiError;
+use crate::common::pagination::{
+  CursorMeta, CursorResponse, PageMeta, PageResponse, PaginationParams,
+};
 use crate::modules::users::dto::UserDto;
 use crate::modules::users::entities::{self, Entity as UserEntity};
 use crate::modules::users::enums::UserStatus;
 
-pub async fn index(db: &DatabaseConnection) -> Result<serde_json::Value, ApiError> {
-  let users = UserEntity::find().all(db).await?;
-  let responses: Vec<UserDto> = users.into_iter().map(UserDto::from).collect();
-  Ok(serde_json::json!(responses))
+pub async fn index(
+  db: &DatabaseConnection,
+  params: &PaginationParams,
+) -> Result<serde_json::Value, ApiError> {
+  let per_page = params.per_page();
+
+  if params.is_cursor_mode() {
+    // Cursor-based pagination
+    let cursor = params.cursor.as_deref().unwrap_or_default();
+    let cursor_id = Uuid::parse_str(cursor)
+      .map_err(|_| ApiError::InvalidRequest("Invalid cursor".to_string()))?;
+
+    // Find cursor item to get its created_at
+    let cursor_item = UserEntity::find()
+      .filter(entities::Column::Id.eq(cursor_id))
+      .one(db)
+      .await?
+      .ok_or_else(|| ApiError::InvalidRequest("Cursor not found".to_string()))?;
+
+    // Fetch items after cursor: (created_at, id) > (cursor_created_at, cursor_id)
+    // Order by created_at ASC, id ASC for stable ordering
+    let users = UserEntity::find()
+      .filter(
+        sea_orm::Condition::any()
+          .add(entities::Column::CreatedAt.gt(cursor_item.created_at))
+          .add(
+            sea_orm::Condition::all()
+              .add(entities::Column::CreatedAt.eq(cursor_item.created_at))
+              .add(entities::Column::Id.gt(cursor_id)),
+          ),
+      )
+      .order_by_asc(entities::Column::CreatedAt)
+      .order_by_asc(entities::Column::Id)
+      .limit(per_page + 1)
+      .all(db)
+      .await?;
+
+    // Take per_page + 1 to determine if there's a next page
+    let has_next = users.len() as u64 > per_page;
+    let items: Vec<UserDto> = users
+      .into_iter()
+      .take(per_page as usize)
+      .map(UserDto::from)
+      .collect();
+
+    let next_cursor = if has_next {
+      items.last().map(|u| u.id.clone())
+    } else {
+      None
+    };
+
+    let response = CursorResponse {
+      data: items,
+      meta: CursorMeta {
+        per_page,
+        next_cursor,
+      },
+    };
+    Ok(serde_json::json!(response))
+  } else {
+    // Page-based pagination
+    let page = params.page();
+
+    let query = UserEntity::find()
+      .order_by_asc(entities::Column::CreatedAt)
+      .order_by_asc(entities::Column::Id);
+
+    let paginator = query.paginate(db, per_page);
+    let total = paginator.num_items().await?;
+    let total_pages = (total + per_page - 1) / per_page;
+    let users = paginator.fetch_page(page - 1).await?;
+
+    let items: Vec<UserDto> = users.into_iter().map(UserDto::from).collect();
+
+    let response = PageResponse {
+      data: items,
+      meta: PageMeta {
+        total,
+        page,
+        per_page,
+        total_pages,
+      },
+    };
+    Ok(serde_json::json!(response))
+  }
 }
 
 pub async fn create(

@@ -1,10 +1,11 @@
 use axum::{
-  extract::{Path, State},
+  extract::{Path, Query, State},
   Json,
 };
 use serde_json::Value;
 use uuid::Uuid;
 
+use crate::common::pagination::PaginationParams;
 use crate::common::validated_json::ValidatedJson;
 use crate::modules::users::dto::UserCreate;
 use crate::{app::AppState, modules::users::dto::UserDto};
@@ -15,15 +16,19 @@ use crate::{common::api_error::ApiError, modules::users::service};
   tag = "Users",
   path = "/api/v1/users",
   operation_id = "usersIndex",
+  params(PaginationParams),
   responses(
-      (status = 200, description = "List users", body = [UserDto])
+      (status = 200, description = "List users (page mode or cursor mode)", body = Value)
   ),
   security(
     ("bearerAuth" = [])
   )
 )]
-pub async fn index(State(state): State<AppState>) -> Result<Json<Value>, ApiError> {
-  let result = service::index(&state.db.conn).await?;
+pub async fn index(
+  State(state): State<AppState>,
+  Query(params): Query<PaginationParams>,
+) -> Result<Json<Value>, ApiError> {
+  let result = service::index(&state.db.conn, &params).await?;
   Ok(Json(result))
 }
 
