@@ -17,7 +17,7 @@ COPY --from=planner /app/recipe.json recipe.json
 RUN cargo chef cook --release --recipe-path recipe.json
 COPY . .
 # Build project
-RUN cargo build --release --bin server
+RUN cargo build --release --bin server --bin db
 
 # ============================
 FROM debian:bookworm-slim AS runtime
@@ -35,6 +35,7 @@ RUN apt-get update -y \
 
 # Copy the compiled binary from the builder stage
 COPY --from=builder /app/target/release/server server
+COPY --from=builder /app/target/release/db db
 
 # Set environment variables
 ENV PORT=8080

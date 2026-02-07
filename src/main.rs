@@ -30,6 +30,14 @@ async fn main() {
     tracing::debug!("Skipping migrations as DATABASE_RUN_MIGRATIONS is disabled");
   }
 
+  // Run seeds if enabled
+  if cfg.db_run_seeds {
+    tracing::debug!("Running seeds");
+    db.run_seeds(&cfg).await.expect("Failed to run seeds");
+  } else {
+    tracing::debug!("Skipping seeds as DATABASE_RUN_SEEDS is disabled");
+  }
+
   // Spin up our server.
   tracing::info!("Starting server on {}", cfg.listen_address);
   let listener = TcpListener::bind(&cfg.listen_address)

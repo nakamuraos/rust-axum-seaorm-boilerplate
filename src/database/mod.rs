@@ -1,4 +1,5 @@
 pub mod migrations;
+pub mod seeds;
 
 use anyhow::Result;
 use sea_orm::{ConnectOptions, Database, DatabaseConnection};
@@ -43,5 +44,9 @@ impl Db {
     // is properly migrated during startup.
     Migrator::up(&self.conn, None).await?;
     Ok(())
+  }
+
+  pub async fn run_seeds(&self, cfg: &Config) -> Result<(), sea_orm::DbErr> {
+    seeds::run(&self.conn, cfg).await
   }
 }

@@ -50,6 +50,9 @@ pub struct Configuration {
   /// Whether to run database migrations on startup
   pub db_run_migrations: bool,
 
+  /// Whether to run database seeds on startup
+  pub db_run_seeds: bool,
+
   /// JWT token expiration in days (default: 7)
   pub jwt_expiration_days: i64,
 
@@ -111,6 +114,15 @@ impl Configuration {
             .parse::<bool>()
             .expect("Unable to parse the value of the DATABASE_RUN_MIGRATIONS environment variable. Please make sure it is a valid boolean");
 
+    // Default to true in development, false in production
+    let db_run_seeds = std::env::var("DATABASE_RUN_SEEDS")
+            .unwrap_or_else(|_| match env {
+                Environment::Development => "true".to_string(),
+                Environment::Production => "false".to_string(),
+            })
+            .parse::<bool>()
+            .expect("Unable to parse the value of the DATABASE_RUN_SEEDS environment variable. Please make sure it is a valid boolean");
+
     // Default JWT expiration is 7 days
     let jwt_expiration_days = std::env::var("JWT_EXPIRATION_DAYS")
       .unwrap_or_else(|_| "7".to_string())
@@ -137,6 +149,7 @@ impl Configuration {
       db_pool_max_size,
       db_timeout,
       db_run_migrations,
+      db_run_seeds,
       jwt_expiration_days,
       bcrypt_cost,
     });

@@ -35,23 +35,23 @@ A production-ready REST + GraphQL API boilerplate built with [Axum](https://gith
 ```
 src/
 ├── common/
-│   ├── cfg.rs              # Environment-based configuration
-│   ├── api_error.rs        # Centralized error handling
-│   ├── telemetry.rs        # Logging setup
-│   ├── pagination.rs       # Page & cursor pagination
-│   ├── middlewares/        # CORS, timeout, request ID, normalize path
-│   ├── validation/         # ValidatedJson, ValidatedPath extractors
-│   └── utils/              # Auth helpers, shutdown signal
+│   ├── config/             # App configuration, telemetry, shutdown signal
+│   ├── errors/             # Centralized error handling (ApiError)
+│   ├── extractors/         # ValidatedJson, ValidatedPath extractors
+│   ├── middlewares/        # CORS, timeout, request ID, normalize path, basic auth
+│   ├── api_doc.rs          # OpenAPI/Swagger setup
+│   ├── graphql.rs          # GraphQL schema & router
+│   └── pagination.rs       # Page & cursor pagination
 ├── database/
 │   ├── mod.rs              # Connection pool setup
-│   └── migrations/         # Sea-ORM migrations
+│   ├── main.rs             # Standalone CLI for migrations & seeds
+│   ├── migrations/         # Sea-ORM migrations
+│   └── seeds/              # Database seed data
 ├── modules/
 │   ├── auth/               # Login, register, JWT guards (auth/admin/owner)
 │   ├── users/              # CRUD, entities, DTOs, role & status enums
 │   └── health/             # Health check endpoint
 ├── app.rs                  # Router & middleware setup
-├── doc.rs                  # OpenAPI config
-├── query_root.rs           # GraphQL schema
 ├── lib.rs
 └── main.rs
 ```
@@ -100,10 +100,32 @@ docker run -d -p 5432:5432 -e POSTGRES_PASSWORD=password postgres
 cargo run
 ```
 
-The server starts at `http://localhost:8080`. Migrations run automatically in development.
+The server starts at `http://localhost:8080`. Migrations and seeds run automatically in development.
 
 - Swagger UI: `http://localhost:8080/docs`
 - GraphQL: `http://localhost:8080/graphql`
+
+### Migrations & Seeds
+
+[Migrations](https://www.sea-ql.org/SeaORM/docs/migration/running-migration/) and [seeds](https://www.sea-ql.org/SeaORM/docs/migration/seeding-data/) are managed separately in `src/database/` and run programmatically on application startup. They run automatically in development (`APP_ENV=development`, `DATABASE_RUN_MIGRATIONS=true` and/or `DATABASE_RUN_SEEDS=false`) and are disabled by default in production.
+
+You can also run them standalone without starting the server:
+
+```shell
+cargo run --bin db -- migrate   # Run all pending migrations
+cargo run --bin db -- seed      # Run all database seeds
+cargo run --bin db -- setup     # Run migrations then seeds
+```
+
+Seeds are idempotent — they check if each user already exists before inserting, so they are safe to run multiple times.
+
+Default seed users:
+
+| Email               | Password    | Role  |
+| ------------------- | ----------- | ----- |
+| `admin@example.com` | `Admin@123` | Admin |
+| `user1@example.com` | `User@1234` | User  |
+| `user2@example.com` | `User@1234` | User  |
 
 ### Auto-reload (development)
 
@@ -113,6 +135,30 @@ cargo watch -q -x run
 # or pipe to jq for formatted logs:
 cargo watch -q -x run | jq .
 ```
+
+### Format code
+
+```shell
+cargo fmt
+```
+
+Formats all Rust code in the project according to the official style guide.
+
+### Lint code
+
+```shell
+cargo clippy
+```
+
+Runs the Clippy linter to catch common mistakes and suggest improvements.
+
+### Run tests
+
+```shell
+cargo test
+```
+
+Executes all unit and integration tests.
 
 ## Docker Compose
 
@@ -132,6 +178,7 @@ docker-compose down             # stop
 | `DATABASE_POOL_MAX_SIZE`  | `10`         | Max DB connections               |
 | `DATABASE_TIMEOUT`        | `5`          | Connection timeout (seconds)     |
 | `DATABASE_RUN_MIGRATIONS` | `true` (dev) | Auto-run migrations on startup   |
+| `DATABASE_RUN_SEEDS`      | `false` (dev)| Auto-run seeds on startup        |
 | `JWT_SECRET`              | —            | JWT signing key                  |
 | `JWT_EXPIRATION_DAYS`     | `7`          | Token lifetime                   |
 | `BCRYPT_COST`             | `12`         | Password hashing cost (4–31)     |

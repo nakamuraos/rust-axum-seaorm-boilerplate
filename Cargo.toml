@@ -11,6 +11,10 @@ path = "src/lib.rs"
 path = "src/main.rs"
 name = "server"
 
+[[bin]]
+path = "src/database/main.rs"
+name = "db"
+
 [dependencies]
 tokio = { version = "1.49.0", features = ["full"] }
 axum = "0.8.8"
