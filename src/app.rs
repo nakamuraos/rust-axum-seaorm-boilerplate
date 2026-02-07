@@ -10,7 +10,7 @@ use utoipa::OpenApi;
 use utoipa_swagger_ui::{BasicAuth, Config as SwaggerConfig, SwaggerUi};
 
 use crate::common::utils;
-use crate::common::{cfg::Config, middleware, telemetry};
+use crate::common::{cfg::Config, middlewares, telemetry};
 use crate::database::Db;
 use crate::doc;
 use crate::modules::{self, auth::guards::auth_guard};
@@ -31,21 +31,21 @@ pub fn router(cfg: Config, db: Db) -> Router {
   let trace_layer = telemetry::trace_layer();
 
   // Sets 'x-request-id' header with randomly generated uuid v7.
-  let request_id_layer = middleware::request_id_layer();
+  let request_id_layer = middlewares::request_id_layer();
 
   // Propagates 'x-request-id' header from the request to the response.
-  let propagate_request_id_layer = middleware::propagate_request_id_layer();
+  let propagate_request_id_layer = middlewares::propagate_request_id_layer();
 
   // Layer that applies the Cors middleware which adds headers for CORS.
-  let cors_layer = middleware::cors_layer();
+  let cors_layer = middlewares::cors_layer();
 
   // Layer that applies the Timeout middleware, which sets a timeout for requests.
   // The default value is 15 seconds.
-  let timeout_layer = middleware::timeout_layer();
+  let timeout_layer = middlewares::timeout_layer();
 
   // Any trailing slashes from request paths will be removed. For example, a request with `/foo/`
   // will be changed to `/foo` before reaching the internal service.
-  let normalize_path_layer = middleware::normalize_path_layer();
+  let normalize_path_layer = middlewares::normalize_path_layer();
 
   // Create the router with the routes.
   let router = modules::router(axum::extract::State(app_state.clone()));

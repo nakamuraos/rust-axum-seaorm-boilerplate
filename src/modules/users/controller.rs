@@ -1,11 +1,11 @@
 use axum::{
-  extract::{Path, Query, State},
+  extract::{Query, State},
   Json,
 };
 use uuid::Uuid;
 
 use crate::common::pagination::{PaginatedResponse, PaginationParams};
-use crate::common::validated_json::ValidatedJson;
+use crate::common::validation::{ValidatedJson, ValidatedPath};
 use crate::modules::users::dto::{UserCreate, UserDto, UserUpdate};
 use crate::{app::AppState, common::api_error::ApiError, modules::users::service};
 
@@ -69,7 +69,7 @@ pub async fn create(
 )]
 pub async fn show(
   State(state): State<AppState>,
-  Path(user_id): Path<Uuid>,
+  ValidatedPath(user_id): ValidatedPath<Uuid>,
 ) -> Result<Json<UserDto>, ApiError> {
   let result = service::show(&state.db.conn, user_id).await?;
   Ok(Json(result))
@@ -94,7 +94,7 @@ pub async fn show(
 )]
 pub async fn update(
   State(state): State<AppState>,
-  Path(user_id): Path<Uuid>,
+  ValidatedPath(user_id): ValidatedPath<Uuid>,
   ValidatedJson(user): ValidatedJson<UserUpdate>,
 ) -> Result<Json<UserDto>, ApiError> {
   let result = service::update(&state.db.conn, user_id, user.name).await?;
@@ -119,7 +119,7 @@ pub async fn update(
 )]
 pub async fn destroy(
   State(state): State<AppState>,
-  Path(user_id): Path<Uuid>,
+  ValidatedPath(user_id): ValidatedPath<Uuid>,
 ) -> Result<(), ApiError> {
   service::destroy(&state.db.conn, user_id).await
 }
