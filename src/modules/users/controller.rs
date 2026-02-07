@@ -47,7 +47,14 @@ pub async fn create(
   State(state): State<AppState>,
   ValidatedJson(user): ValidatedJson<UserCreate>,
 ) -> Result<Json<UserDto>, ApiError> {
-  let result = service::create(&state.db.conn, user.email, user.password, user.name).await?;
+  let result = service::create(
+    &state.db.conn,
+    &state.cfg,
+    user.email,
+    user.password,
+    user.name,
+  )
+  .await?;
   Ok(Json(result))
 }
 

@@ -1,10 +1,11 @@
 use anyhow::anyhow;
-use bcrypt::{hash, verify, DEFAULT_COST};
+use bcrypt::{hash, verify};
 use jsonwebtoken::{encode, EncodingKey, Header};
 use sea_orm::{ActiveModelTrait, ColumnTrait, DatabaseConnection, EntityTrait, QueryFilter};
 use uuid::Uuid;
 
 use crate::common::api_error::ApiError;
+use crate::common::cfg::Config;
 use crate::modules::auth::dto::{AuthResponse, LoginRequest, RegisterRequest};
 use crate::modules::auth::guards::auth_guard::Claims;
 use crate::modules::users::dto::UserDto;
@@ -12,10 +13,11 @@ use crate::modules::users::entities::{self as UserEntities};
 
 pub async fn register(
   conn: &DatabaseConnection,
+  cfg: &Config,
   req: RegisterRequest,
 ) -> Result<AuthResponse, ApiError> {
   // Hash password
-  let password_hash = hash(req.password.as_bytes(), DEFAULT_COST)
+  let password_hash = hash(req.password.as_bytes(), cfg.bcrypt_cost)
     .map_err(|e| ApiError::InternalError(anyhow!("Failed to hash password: {}", e)))?;
 
   // Create user
@@ -36,7 +38,7 @@ pub async fn register(
   })?;
 
   // Generate JWT token
-  let token = generate_token(&user)?;
+  let token = generate_token(&user, cfg)?;
 
   Ok(AuthResponse {
     token,
@@ -44,7 +46,11 @@ pub async fn register(
   })
 }
 
-pub async fn login(conn: &DatabaseConnection, req: LoginRequest) -> Result<AuthResponse, ApiError> {
+pub async fn login(
+  conn: &DatabaseConnection,
+  cfg: &Config,
+  req: LoginRequest,
+) -> Result<AuthResponse, ApiError> {
   // Find user by email
   let user = UserEntities::Entity::find()
     .filter(UserEntities::Column::Email.eq(req.email))
@@ -60,7 +66,7 @@ pub async fn login(conn: &DatabaseConnection, req: LoginRequest) -> Result<AuthR
   }
 
   // Generate JWT token
-  let token = generate_token(&user)?;
+  let token = generate_token(&user, cfg)?;
 
   Ok(AuthResponse {
     token,
@@ -68,11 +74,11 @@ pub async fn login(conn: &DatabaseConnection, req: LoginRequest) -> Result<AuthR
   })
 }
 
-fn generate_token(user: &UserEntities::Model) -> Result<String, ApiError> {
+fn generate_token(user: &UserEntities::Model, cfg: &Config) -> Result<String, ApiError> {
   let secret = std::env::var("JWT_SECRET")
     .unwrap_or_else(|_| "a-string-secret-at-least-256-bits-long".to_string());
   let expiration = chrono::Utc::now()
-    .checked_add_signed(chrono::Duration::days(7))
+    .checked_add_signed(chrono::Duration::days(cfg.jwt_expiration_days))
     .expect("valid timestamp")
     .timestamp();
 

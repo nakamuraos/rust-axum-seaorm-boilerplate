@@ -46,6 +46,12 @@ pub struct Configuration {
 
   /// Whether to run database migrations on startup
   pub db_run_migrations: bool,
+
+  /// JWT token expiration in days (default: 7)
+  pub jwt_expiration_days: i64,
+
+  /// Bcrypt hashing cost (default: 12, range: 4-31)
+  pub bcrypt_cost: u32,
 }
 
 #[derive(Deserialize, Debug)]
@@ -102,6 +108,18 @@ impl Configuration {
             .parse::<bool>()
             .expect("Unable to parse the value of the DATABASE_RUN_MIGRATIONS environment variable. Please make sure it is a valid boolean");
 
+    // Default JWT expiration is 7 days
+    let jwt_expiration_days = std::env::var("JWT_EXPIRATION_DAYS")
+      .unwrap_or_else(|_| "7".to_string())
+      .parse::<i64>()
+      .expect("Unable to parse JWT_EXPIRATION_DAYS. Please make sure it is a valid integer");
+
+    // Default bcrypt cost is 12 (valid range: 4-31)
+    let bcrypt_cost = std::env::var("BCRYPT_COST")
+      .unwrap_or_else(|_| "12".to_string())
+      .parse::<u32>()
+      .expect("Unable to parse BCRYPT_COST. Please make sure it is a valid integer (4-31)");
+
     let listen_address = SocketAddr::from((Ipv6Addr::UNSPECIFIED, app_port));
 
     let config = Arc::new(Configuration {
@@ -116,6 +134,8 @@ impl Configuration {
       db_pool_max_size,
       db_timeout,
       db_run_migrations,
+      jwt_expiration_days,
+      bcrypt_cost,
     });
 
     // Log the current configuration

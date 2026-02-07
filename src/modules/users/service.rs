@@ -1,4 +1,4 @@
-use bcrypt::{hash, DEFAULT_COST};
+use bcrypt::hash;
 use sea_orm::{
   ActiveModelTrait, ColumnTrait, DatabaseConnection, EntityTrait, PaginatorTrait, QueryFilter,
   QueryOrder, QuerySelect, Set,
@@ -6,6 +6,7 @@ use sea_orm::{
 use uuid::Uuid;
 
 use crate::common::api_error::ApiError;
+use crate::common::cfg::Config;
 use crate::common::pagination::{
   CursorMeta, CursorResponse, PageMeta, PageResponse, PaginatedResponse, PaginationParams,
 };
@@ -100,12 +101,13 @@ pub async fn index(
 
 pub async fn create(
   db: &DatabaseConnection,
+  cfg: &Config,
   email: String,
   password: String,
   name: String,
 ) -> Result<UserDto, ApiError> {
   // Hash password
-  let password_hash = hash(password.as_bytes(), DEFAULT_COST)
+  let password_hash = hash(password.as_bytes(), cfg.bcrypt_cost)
     .map_err(|e| ApiError::InternalError(anyhow::anyhow!("Failed to hash password: {}", e)))?;
 
   let user = entities::ActiveModel {

@@ -23,7 +23,7 @@ pub async fn register(
   State(state): State<AppState>,
   ValidatedJson(req): ValidatedJson<RegisterRequest>,
 ) -> Result<Json<AuthResponse>, ApiError> {
-  let result = service::register(&state.db.conn, req).await?;
+  let result = service::register(&state.db.conn, &state.cfg, req).await?;
   Ok(Json(result))
 }
 
@@ -44,6 +44,6 @@ pub async fn login(
   State(state): State<AppState>,
   ValidatedJson(req): ValidatedJson<LoginRequest>,
 ) -> Result<Json<AuthResponse>, ApiError> {
-  let result = service::login(&state.db.conn, req).await?;
+  let result = service::login(&state.db.conn, &state.cfg, req).await?;
   Ok(Json(result))
 }
