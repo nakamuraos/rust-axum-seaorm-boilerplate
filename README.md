@@ -1,5 +1,15 @@
 # Rust Axum + SeaORM Boilerplate
 
+<p align="center">
+  <a href="https://www.rust-lang.org/"><img src="https://img.shields.io/badge/rust-stable-orange.svg?logo=rust" alt="Rust"></a>
+  <a href="https://github.com/tokio-rs/axum"><img src="https://img.shields.io/badge/axum-0.8-blue.svg" alt="Axum"></a>
+  <a href="https://github.com/SeaQL/sea-orm"><img src="https://img.shields.io/badge/sea--orm-1.1-blue.svg" alt="SeaORM"></a>
+  <a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT-green.svg" alt="License: MIT"></a>
+  <a href="https://github.com/nakamuraos/rust-axum-seaorm-boilerplate/stargazers"><img src="https://img.shields.io/github/stars/nakamuraos/rust-axum-seaorm-boilerplate?style=social" alt="GitHub stars"></a>
+  <a href="https://github.com/nakamuraos/rust-axum-seaorm-boilerplate/network/members"><img src="https://img.shields.io/github/forks/nakamuraos/rust-axum-seaorm-boilerplate?style=social" alt="GitHub forks"></a>
+  <a href="https://github.com/nakamuraos/rust-axum-seaorm-boilerplate/issues"><img src="https://img.shields.io/github/issues/nakamuraos/rust-axum-seaorm-boilerplate" alt="GitHub issues"></a>
+</p>
+
 A production-ready REST + GraphQL API boilerplate built with [Axum](https://github.com/tokio-rs/axum), [Sea-ORM](https://github.com/SeaQL/sea-orm), and PostgreSQL.
 
 ![swagger](./docs/images/swagger.png)
