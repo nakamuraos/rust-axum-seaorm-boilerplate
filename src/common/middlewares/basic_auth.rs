@@ -3,7 +3,7 @@ use axum::{
   extract::State,
   response::{IntoResponse, Response},
 };
-use base64::{engine::general_purpose, Engine};
+use base64::{Engine, engine::general_purpose};
 use hyper::StatusCode;
 
 /// Middleware that applies basic authentication.

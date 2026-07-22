@@ -1,6 +1,6 @@
 use utoipa::{
-  openapi::security::{ApiKey, ApiKeyValue, Http, HttpAuthScheme, SecurityScheme},
   Modify, OpenApi,
+  openapi::security::{ApiKey, ApiKeyValue, Http, HttpAuthScheme, SecurityScheme},
 };
 use utoipa_swagger_ui::{BasicAuth, Config as SwaggerConfig, SwaggerUi};
 use utoipauto::utoipauto;

@@ -1,6 +1,6 @@
 use axum::extract::State;
 use axum::{extract::Request, middleware::Next, response::Response};
-use jsonwebtoken::{decode, DecodingKey, Validation};
+use jsonwebtoken::{DecodingKey, Validation, decode};
 use serde::{Deserialize, Serialize};
 
 use crate::app::AppState;

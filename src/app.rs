@@ -1,6 +1,6 @@
 use axum::Router;
 
-use crate::common::{api_doc, config::telemetry, config::Config, graphql, middlewares};
+use crate::common::{api_doc, config::Config, config::telemetry, graphql, middlewares};
 use crate::database::Db;
 use crate::modules;
 

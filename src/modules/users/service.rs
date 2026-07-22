@@ -1,7 +1,7 @@
 use bcrypt::hash;
 use sea_orm::{
-  ActiveModelTrait, ColumnTrait, DatabaseConnection, EntityTrait, PaginatorTrait, QueryFilter,
-  QueryOrder, QuerySelect, Set,
+  ActiveModelTrait, DatabaseConnection, EntityTrait, ItemsAndPagesNumber, PaginatorTrait,
+  QueryOrder, Set,
 };
 use uuid::Uuid;
 
@@ -11,7 +11,7 @@ use crate::common::pagination::{
   CursorMeta, CursorResponse, PageMeta, PageResponse, PaginatedResponse, PaginationParams,
 };
 use crate::modules::users::dto::UserDto;
-use crate::modules::users::entities::{self, Entity as UserEntity};
+use crate::modules::users::entities::{self, Entity as UserEntity, UserProfile};
 use crate::modules::users::enums::UserStatus;
 
 pub async fn index(
@@ -26,32 +26,21 @@ pub async fn index(
     let cursor_id = Uuid::parse_str(cursor)
       .map_err(|_| ApiError::InvalidRequest("Invalid cursor".to_string()))?;
 
-    // Find cursor item to get its created_at
-    let cursor_item = UserEntity::find()
-      .filter(entities::Column::Id.eq(cursor_id))
+    // Find cursor item to anchor the keyset on its (created_at, id) tuple
+    let cursor_item = UserEntity::find_by_id(cursor_id)
       .one(db)
       .await?
       .ok_or_else(|| ApiError::InvalidRequest("Cursor not found".to_string()))?;
 
-    // Fetch items after cursor: (created_at, id) > (cursor_created_at, cursor_id)
-    // Order by created_at ASC, id ASC for stable ordering
+    // Keyset pagination on (created_at, id): fetch per_page + 1 to detect a next page
     let users = UserEntity::find()
-      .filter(
-        sea_orm::Condition::any()
-          .add(entities::Column::CreatedAt.gt(cursor_item.created_at))
-          .add(
-            sea_orm::Condition::all()
-              .add(entities::Column::CreatedAt.eq(cursor_item.created_at))
-              .add(entities::Column::Id.gt(cursor_id)),
-          ),
-      )
-      .order_by_asc(entities::Column::CreatedAt)
-      .order_by_asc(entities::Column::Id)
-      .limit(per_page + 1)
+      .cursor_by((entities::Column::CreatedAt, entities::Column::Id))
+      .into_partial_model::<UserProfile>()
+      .after((cursor_item.created_at, cursor_id))
+      .first(per_page + 1)
       .all(db)
       .await?;
 
-    // Take per_page + 1 to determine if there's a next page
     let has_next = users.len() as u64 > per_page;
     let items: Vec<UserDto> = users
       .into_iter()
@@ -76,13 +65,16 @@ pub async fn index(
     // Page-based pagination
     let page = params.page();
 
-    let query = UserEntity::find()
+    let paginator = UserEntity::find()
       .order_by_asc(entities::Column::CreatedAt)
-      .order_by_asc(entities::Column::Id);
+      .order_by_asc(entities::Column::Id)
+      .into_partial_model::<UserProfile>()
+      .paginate(db, per_page);
 
-    let paginator = query.paginate(db, per_page);
-    let total = paginator.num_items().await?;
-    let total_pages = (total + per_page - 1) / per_page;
+    let ItemsAndPagesNumber {
+      number_of_items: total,
+      number_of_pages: total_pages,
+    } = paginator.num_items_and_pages().await?;
     let users = paginator.fetch_page(page - 1).await?;
 
     let items: Vec<UserDto> = users.into_iter().map(UserDto::from).collect();
@@ -131,8 +123,8 @@ pub async fn create(
 }
 
 pub async fn show(db: &DatabaseConnection, id: Uuid) -> Result<UserDto, ApiError> {
-  let user = UserEntity::find()
-    .filter(entities::Column::Id.eq(id))
+  let user = UserEntity::find_by_id(id)
+    .into_partial_model::<UserProfile>()
     .one(db)
     .await?
     .ok_or_else(|| ApiError::NotFound("User not found".to_string()))?;
@@ -141,8 +133,7 @@ pub async fn show(db: &DatabaseConnection, id: Uuid) -> Result<UserDto, ApiError
 }
 
 pub async fn update(db: &DatabaseConnection, id: Uuid, name: String) -> Result<UserDto, ApiError> {
-  let user = UserEntity::find()
-    .filter(entities::Column::Id.eq(id))
+  let user = UserEntity::find_by_id(id)
     .one(db)
     .await?
     .ok_or_else(|| ApiError::NotFound("User not found".to_string()))?;
@@ -155,8 +146,7 @@ pub async fn update(db: &DatabaseConnection, id: Uuid, name: String) -> Result<U
 }
 
 pub async fn destroy(db: &DatabaseConnection, id: Uuid) -> Result<(), ApiError> {
-  let user = UserEntity::find()
-    .filter(entities::Column::Id.eq(id))
+  let user = UserEntity::find_by_id(id)
     .one(db)
     .await?
     .ok_or_else(|| ApiError::NotFound("User not found".to_string()))?;

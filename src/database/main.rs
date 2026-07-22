@@ -1,5 +1,5 @@
-use server::common::config::telemetry;
 use server::common::config::Configuration;
+use server::common::config::telemetry;
 use server::database::Db;
 use std::env;
 use std::process;

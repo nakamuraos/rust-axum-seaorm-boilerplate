@@ -2,7 +2,7 @@ pub mod auth;
 pub mod health;
 pub mod users;
 
-use axum::{extract::State, Router};
+use axum::{Router, extract::State};
 
 use crate::app::AppState;
 

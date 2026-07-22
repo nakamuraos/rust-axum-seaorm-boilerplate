@@ -1,6 +1,6 @@
 use axum::{
-  extract::{rejection::JsonRejection, FromRequest, Request},
   Json,
+  extract::{FromRequest, Request, rejection::JsonRejection},
 };
 use serde::de::DeserializeOwned;
 use validator::Validate;

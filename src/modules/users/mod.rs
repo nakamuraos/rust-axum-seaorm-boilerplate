@@ -5,9 +5,9 @@ pub mod enums;
 pub mod service;
 
 use axum::{
+  Router,
   extract::State,
   routing::{delete, get, post, put},
-  Router,
 };
 
 use crate::app::AppState;

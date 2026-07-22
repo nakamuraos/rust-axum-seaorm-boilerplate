@@ -1,13 +1,13 @@
 use async_graphql::{dynamic::*, http::GraphiQLSource};
 use async_graphql_axum::{GraphQLRequest, GraphQLResponse};
 use axum::{
+  Router,
   extract::State,
   response::Html,
   routing::{get, post},
-  Router,
 };
 use sea_orm::DatabaseConnection;
-use seaography::{async_graphql, lazy_static, Builder, BuilderContext};
+use seaography::{Builder, BuilderContext, async_graphql, lazy_static};
 
 use crate::app::AppState;
 use crate::common::middlewares;

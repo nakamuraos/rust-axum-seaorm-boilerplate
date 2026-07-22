@@ -4,7 +4,7 @@ use serde::{Deserialize, Serialize};
 use utoipa::ToSchema;
 use validator::Validate;
 
-use crate::modules::users::entities::Model;
+use crate::modules::users::entities::{Model, UserProfile};
 
 #[derive(Debug, Clone, Serialize, Deserialize, ToSchema, Validate)]
 pub struct UserCreate {
@@ -28,6 +28,8 @@ pub struct UserDto {
   pub id: String,
   pub email: String,
   pub name: String,
+  pub phone: Option<String>,
+  pub bio: Option<String>,
   pub status: String,
   pub role: String,
   #[schema(format = "date-time")]
@@ -36,21 +38,44 @@ pub struct UserDto {
   pub updated_at: Option<String>,
 }
 
+impl From<UserProfile> for UserDto {
+  fn from(profile: UserProfile) -> Self {
+    Self {
+      id: profile.id.to_string(),
+      email: profile.email,
+      name: profile.name,
+      phone: profile.phone,
+      bio: profile.bio,
+      status: profile.status.into_value(),
+      role: profile.role.into_value(),
+      created_at: Some(
+        profile
+          .created_at
+          .to_rfc3339_opts(SecondsFormat::Millis, true),
+      ),
+      updated_at: Some(
+        profile
+          .updated_at
+          .to_rfc3339_opts(SecondsFormat::Millis, true),
+      ),
+    }
+  }
+}
+
 impl From<Model> for UserDto {
   fn from(model: Model) -> Self {
-    Self {
-      id: model.id.to_string(),
+    UserProfile {
+      id: model.id,
       email: model.email,
       name: model.name,
-      status: model.status.into_value(),
-      role: model.role.into_value(),
-      created_at: model
-        .created_at
-        .map(|dt| dt.to_rfc3339_opts(SecondsFormat::Millis, true)),
-      updated_at: model
-        .updated_at
-        .map(|dt| dt.to_rfc3339_opts(SecondsFormat::Millis, true)),
+      phone: model.phone,
+      bio: model.bio,
+      status: model.status,
+      role: model.role,
+      created_at: model.created_at,
+      updated_at: model.updated_at,
     }
+    .into()
   }
 }
 
@@ -213,6 +238,8 @@ mod tests {
       id: "123e4567-e89b-12d3-a456-426614174000".to_string(),
       email: "user@test.com".to_string(),
       name: "Test User".to_string(),
+      phone: None,
+      bio: None,
       status: "Active".to_string(),
       role: "User".to_string(),
       created_at: Some("2024-01-01T00:00:00.000Z".to_string()),

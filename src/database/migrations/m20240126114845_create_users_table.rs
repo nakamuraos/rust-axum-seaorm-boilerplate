@@ -1,6 +1,7 @@
 use sea_orm::{ActiveEnum, DbBackend, Schema, Statement};
 use sea_orm_migration::prelude::*;
 
+use crate::modules::users::entities::Entity as UserEntity;
 use crate::modules::users::enums::{UserRole, UserStatus};
 
 #[derive(DeriveMigrationName)]
@@ -65,40 +66,13 @@ impl MigrationTrait for Migration {
         .await?;
     }
 
-    // Create the users table
+    // Derive the users table straight from the entity definition, so the schema
+    // has a single source of truth (columns, types and defaults live on the entity).
     manager
       .create_table(
-        Table::create()
-          .table(Users::Table)
+        schema
+          .create_table_from_entity(UserEntity)
           .if_not_exists()
-          .col(ColumnDef::new(Users::Id).uuid().not_null().primary_key())
-          .col(ColumnDef::new(Users::Email).string().not_null())
-          .col(ColumnDef::new(Users::Password).string().not_null())
-          .col(ColumnDef::new(Users::Name).string().not_null())
-          .col(
-            ColumnDef::new(Users::Status)
-              .custom(UserStatus::name())
-              .not_null()
-              .default(Expr::value("Inactive")),
-          )
-          .col(
-            ColumnDef::new(Users::Role)
-              .custom(UserRole::name())
-              .not_null()
-              .default(Expr::value("User")),
-          )
-          .col(
-            ColumnDef::new(Users::CreatedAt)
-              .timestamp_with_time_zone()
-              .not_null()
-              .default(Expr::current_timestamp()),
-          )
-          .col(
-            ColumnDef::new(Users::UpdatedAt)
-              .timestamp_with_time_zone()
-              .not_null()
-              .default(Expr::current_timestamp()),
-          )
           .to_owned(),
       )
       .await
@@ -107,7 +81,7 @@ impl MigrationTrait for Migration {
   async fn down(&self, manager: &SchemaManager) -> Result<(), DbErr> {
     // Drop the users table first
     let result = manager
-      .drop_table(Table::drop().table(Users::Table).to_owned())
+      .drop_table(Table::drop().table(UserEntity).to_owned())
       .await?;
 
     // Check and drop UserStatus enum if it exists
@@ -159,17 +133,4 @@ impl MigrationTrait for Migration {
 
     Ok(result)
   }
-}
-
-#[derive(Iden)]
-enum Users {
-  Table,
-  Id,
-  Email,
-  Password,
-  Name,
-  Status,
-  Role,
-  CreatedAt,
-  UpdatedAt,
 }

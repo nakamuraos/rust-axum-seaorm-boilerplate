@@ -3,7 +3,7 @@ use tower_http::{
   trace::{DefaultMakeSpan, DefaultOnRequest, DefaultOnResponse, TraceLayer},
 };
 use tracing::Level;
-use tracing_subscriber::{fmt, layer::SubscriberExt, util::SubscriberInitExt, EnvFilter};
+use tracing_subscriber::{EnvFilter, fmt, layer::SubscriberExt, util::SubscriberInitExt};
 
 /// The `EnvFilter` type is used to filter log events based on the value of an environment variable.
 /// In this case, we are using the `try_from_default_env` method to attempt to read the `RUST_LOG` environment variable,

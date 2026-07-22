@@ -1,6 +1,6 @@
+use server::common::config::Configuration;
 use server::common::config::shutdown::shutdown_signal;
 use server::common::config::telemetry;
-use server::common::config::Configuration;
 use server::database::Db;
 use tokio::net::TcpListener;
 

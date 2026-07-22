@@ -1,5 +1,5 @@
 use axum::{
-  extract::{rejection::PathRejection, FromRequestParts, Path},
+  extract::{FromRequestParts, Path, rejection::PathRejection},
   http::request::Parts,
 };
 use serde::de::DeserializeOwned;
