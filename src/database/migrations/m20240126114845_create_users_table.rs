@@ -22,7 +22,7 @@ impl MigrationTrait for Migration {
       enum_name
     );
     let type_exists: bool = db
-      .query_one(Statement::from_string(DbBackend::Postgres, check_type))
+      .query_one_raw(Statement::from_string(DbBackend::Postgres, check_type))
       .await?
       .map(|row| row.try_get::<bool>("", "exists").unwrap_or(false))
       .unwrap_or(false);
@@ -30,7 +30,11 @@ impl MigrationTrait for Migration {
     if !type_exists {
       // Create the enum type for Status
       manager
-        .create_type(schema.create_enum_from_active_enum::<UserStatus>())
+        .create_type(
+          schema
+            .create_enum_from_active_enum::<UserStatus>()
+            .expect("UserStatus is a database enum"),
+        )
         .await?;
     }
 
@@ -45,7 +49,7 @@ impl MigrationTrait for Migration {
       enum_name
     );
     let type_exists: bool = db
-      .query_one(Statement::from_string(DbBackend::Postgres, check_type))
+      .query_one_raw(Statement::from_string(DbBackend::Postgres, check_type))
       .await?
       .map(|row| row.try_get::<bool>("", "exists").unwrap_or(false))
       .unwrap_or(false);
@@ -53,7 +57,11 @@ impl MigrationTrait for Migration {
     if !type_exists {
       // Create the enum type for Role
       manager
-        .create_type(schema.create_enum_from_active_enum::<UserRole>())
+        .create_type(
+          schema
+            .create_enum_from_active_enum::<UserRole>()
+            .expect("UserRole is a database enum"),
+        )
         .await?;
     }
 
@@ -113,7 +121,7 @@ impl MigrationTrait for Migration {
       enum_name
     );
     let type_exists: bool = db
-      .query_one(Statement::from_string(DbBackend::Postgres, check_type))
+      .query_one_raw(Statement::from_string(DbBackend::Postgres, check_type))
       .await?
       .map(|row| row.try_get::<bool>("", "exists").unwrap_or(false))
       .unwrap_or(false);
@@ -122,7 +130,7 @@ impl MigrationTrait for Migration {
       let drop_type = format!("DROP TYPE IF EXISTS {}", enum_name);
       manager
         .get_connection()
-        .execute(Statement::from_string(DbBackend::Postgres, drop_type))
+        .execute_raw(Statement::from_string(DbBackend::Postgres, drop_type))
         .await?;
     }
 
@@ -136,7 +144,7 @@ impl MigrationTrait for Migration {
       enum_name
     );
     let type_exists: bool = db
-      .query_one(Statement::from_string(DbBackend::Postgres, check_type))
+      .query_one_raw(Statement::from_string(DbBackend::Postgres, check_type))
       .await?
       .map(|row| row.try_get::<bool>("", "exists").unwrap_or(false))
       .unwrap_or(false);
@@ -145,7 +153,7 @@ impl MigrationTrait for Migration {
       let drop_type = format!("DROP TYPE IF EXISTS {}", enum_name);
       manager
         .get_connection()
-        .execute(Statement::from_string(DbBackend::Postgres, drop_type))
+        .execute_raw(Statement::from_string(DbBackend::Postgres, drop_type))
         .await?;
     }
 

@@ -17,10 +17,10 @@ use crate::modules::users::{self, entities as usersEntities};
 lazy_static::lazy_static! {
   static ref CONTEXT: BuilderContext = {
     let context = BuilderContext::default();
-    let guards = graphql_guards::setup_guards();
+    let hooks = graphql_guards::setup_guards();
 
     BuilderContext {
-      guards,
+      hooks,
       ..context
     }
   };
