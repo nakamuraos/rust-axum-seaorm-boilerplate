@@ -22,10 +22,58 @@ pub struct RegisterRequest {
   pub name: String,
 }
 
+#[derive(Debug, Serialize, Deserialize, ToSchema, Validate)]
+pub struct RefreshRequest {
+  #[validate(length(min = 1, message = "must not be empty"))]
+  pub refresh_token: String,
+}
+
 #[derive(Debug, Serialize, Deserialize, ToSchema)]
 pub struct AuthResponse {
+  /// Short lived token, sent as `Authorization: Bearer <token>`.
   pub token: String,
+  /// Long lived token, exchanged at `/api/v1/auth/refresh` for a new pair.
+  pub refresh_token: String,
   pub user: UserDto,
+}
+
+#[derive(Debug, Serialize, Deserialize, ToSchema)]
+pub struct TokenPairResponse {
+  pub token: String,
+  pub refresh_token: String,
+}
+
+/// One login of a user, backed by the refresh token issued at the time.
+#[derive(Debug, Serialize, Deserialize, ToSchema)]
+pub struct SessionDto {
+  pub id: String,
+  /// When the session started, i.e. the login or rotation that issued it.
+  #[schema(format = "date-time")]
+  pub created_at: String,
+  #[schema(format = "date-time")]
+  pub expires_at: String,
+  #[schema(format = "date-time")]
+  pub revoked_at: Option<String>,
+  /// Whether the session can still be refreshed.
+  pub active: bool,
+}
+
+impl From<crate::modules::auth::entities::Model> for SessionDto {
+  fn from(model: crate::modules::auth::entities::Model) -> Self {
+    Self {
+      active: model.is_usable(),
+      id: model.id.to_string(),
+      created_at: model.created_at.to_rfc3339(),
+      expires_at: model.expires_at.to_rfc3339(),
+      revoked_at: model.revoked_at.map(|at| at.to_rfc3339()),
+    }
+  }
+}
+
+#[derive(Debug, Serialize, Deserialize, ToSchema)]
+pub struct LogoutResponse {
+  /// Number of refresh tokens that were revoked by the request.
+  pub revoked: u64,
 }
 
 #[cfg(test)]

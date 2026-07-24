@@ -16,6 +16,10 @@ name = "server"
 path = "src/database/main.rs"
 name = "db"
 
+[[bin]]
+path = "src/workers/main.rs"
+name = "worker"
+
 [dependencies]
 tokio = { version = "1.53.1", features = ["full"] }
 axum = "0.8.9"
@@ -74,6 +78,9 @@ bcrypt = "0.19.2"
 validator = { version = "0.20.0", features = ["derive"] }
 clap = { version = "4.6.4", features = ["derive"] }
 serde_yaml_ng = "0.10.0"
+sha2 = "0.11.0"
+rand = "0.10.2"
+async-trait = "0.1.91"
 
 [dev-dependencies]
 mockall = "0.15.0"

@@ -66,6 +66,15 @@ pub struct Configuration {
   /// JWT token expiration in days (default: 7)
   pub jwt_expiration_days: i64,
 
+  /// Refresh token expiration in days (default: 30)
+  pub jwt_refresh_expiration_days: i64,
+
+  /// Days a revoked refresh token is kept before the cleanup worker deletes it
+  pub token_retention_days: i64,
+
+  /// Default hours between two runs of a job in watch mode
+  pub workers_interval_hours: u64,
+
   /// Bcrypt hashing cost (default: 12, range: 4-31)
   pub bcrypt_cost: u32,
 }
@@ -179,6 +188,30 @@ impl Configuration {
       7,
     );
 
+    let jwt_refresh_expiration_days = resolve(
+      &file,
+      "jwt.refresh_expiration_days",
+      &[],
+      args.jwt_refresh_expiration_days,
+      30,
+    );
+
+    let token_retention_days = resolve(
+      &file,
+      "workers.token_retention_days",
+      &[],
+      args.token_retention_days,
+      7,
+    );
+
+    let workers_interval_hours = resolve(
+      &file,
+      "workers.interval_hours",
+      &[],
+      args.workers_interval_hours,
+      24,
+    );
+
     let bcrypt_cost = resolve(&file, "bcrypt.cost", &[], args.bcrypt_cost, 12);
 
     file.warn_unknown_keys();
@@ -200,6 +233,9 @@ impl Configuration {
       db_run_seeds,
       jwt_secret,
       jwt_expiration_days,
+      jwt_refresh_expiration_days,
+      token_retention_days,
+      workers_interval_hours,
       bcrypt_cost,
     });
 

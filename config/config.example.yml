@@ -20,6 +20,13 @@ database:
 jwt:
   secret: change-me-to-a-secure-random-string-at-least-256-bits
   expiration_days: 7
+  refresh_expiration_days: 30
+
+workers:
+  # Days a revoked refresh token is kept before the cleanup worker deletes it
+  token_retention_days: 7
+  # Default gap between two runs of a job started with --watch
+  interval_hours: 24
 
 bcrypt:
   cost: 12

@@ -21,7 +21,7 @@
 - **REST API** with versioned routes (`/api/v1/...`)
 - **GraphQL** with [Seaography](https://github.com/SeaQL/seaography) + field-level guards
 - **OpenAPI/Swagger** auto-generated docs via [utoipa](https://github.com/juhaku/utoipa)
-- **JWT authentication** with bcrypt password hashing
+- **JWT authentication** with bcrypt password hashing and rotating refresh tokens
 - **Role-based access control** - Admin, User roles with auth/admin/owner guards
 - **Sea-ORM** with auto-migrations and connection pooling
 - **Pagination** - page-based and cursor-based
@@ -47,6 +47,10 @@ src/
 │   ├── main.rs             # Standalone CLI for migrations & seeds
 │   ├── migrations/         # Sea-ORM migrations
 │   └── seeds/              # Database seed data
+├── workers/
+│   ├── mod.rs              # Job trait & runner
+│   ├── main.rs             # Standalone CLI for background jobs
+│   └── jobs/               # One module per job, listed in registry()
 ├── modules/
 │   ├── auth/               # Login, register, JWT guards (auth/admin/owner)
 │   ├── users/              # CRUD, entities, DTOs, role & status enums
@@ -60,8 +64,12 @@ src/
 
 | Method     | Path                    | Auth        | Description                  |
 | ---------- | ----------------------- | ----------- | ---------------------------- |
-| `POST`     | `/api/v1/auth/register` | -           | Register a new user          |
-| `POST`     | `/api/v1/auth/login`    | -           | Login, returns JWT           |
+| `POST`     | `/api/v1/auth/register` | -           | Register, returns token pair |
+| `POST`     | `/api/v1/auth/login`    | -           | Login, returns token pair    |
+| `POST`     | `/api/v1/auth/refresh`  | -           | Rotate the refresh token     |
+| `POST`     | `/api/v1/auth/logout`   | -           | Revoke one refresh token     |
+| `POST`     | `/api/v1/auth/logout-all` | JWT       | Revoke all user sessions     |
+| `GET`      | `/api/v1/auth/sessions` | JWT         | List logins of the caller    |
 | `GET`      | `/api/v1/health`        | -           | Health check                 |
 | `GET`      | `/api/v1/users`         | Admin       | List users (paginated)       |
 | `POST`     | `/api/v1/users`         | Admin       | Create user                  |
@@ -148,6 +156,47 @@ Default seed users:
 | `user1@example.com` | `User@1234` | User  |
 | `user2@example.com` | `User@1234` | User  |
 
+### Background workers
+
+Jobs that run outside the request path live in `src/workers/`. The `worker`
+binary runs one job, or `all` of them, and exits - so it can be driven by cron
+or a scheduler. Passing `--watch` keeps the process alive and repeats each job
+on its own interval instead.
+
+```shell
+cargo run --bin worker -- --list           # show the available jobs
+cargo run --bin worker -- cleanup-tokens   # run one job once
+cargo run --bin worker -- all              # run every job once
+cargo run --bin worker -- all --watch      # keep running on an interval
+```
+
+Adding a job means writing a module next to `src/workers/jobs/cleanup_tokens.rs`
+and listing it in `registry()`:
+
+```rust
+pub struct MyJob;
+
+#[async_trait::async_trait]
+impl Job for MyJob {
+  fn name(&self) -> &'static str { "my-job" }
+  fn description(&self) -> &'static str { "What it does" }
+
+  async fn run(&self, ctx: &JobContext) -> Result<u64, ApiError> {
+    // ctx.db and ctx.cfg are available here
+    Ok(0)
+  }
+}
+```
+
+The command line, the listing and watch mode pick it up from the registry. A job
+runs on `workers.interval_hours` in watch mode unless it overrides `interval()`,
+and a failed run is logged without taking the process down.
+
+The bundled `cleanup-tokens` job deletes expired refresh tokens, and revoked ones
+past `workers.token_retention_days`. Revoked tokens are kept for that window so a
+rotated token resurfacing is still recognizable, and so recent logins stay
+visible in `GET /api/v1/auth/sessions`.
+
 ### Auto-reload (development)
 
 ```shell
@@ -229,8 +278,11 @@ on startup, which catches typos.
 | `--database-run-migrations` | `database.run_migrations` | `DATABASE_RUN_MIGRATIONS` | dev only            | Auto-run migrations on startup   |
 | `--database-run-seeds`      | `database.run_seeds`      | `DATABASE_RUN_SEEDS`      | dev only            | Auto-run seeds on startup        |
 | `--jwt-secret`              | `jwt.secret`              | `JWT_SECRET`              | -                   | JWT signing key                  |
-| `--jwt-expiration-days`     | `jwt.expiration_days`     | `JWT_EXPIRATION_DAYS`     | `7`                 | Token lifetime                   |
+| `--jwt-expiration-days`     | `jwt.expiration_days`     | `JWT_EXPIRATION_DAYS`     | `7`                 | Access token lifetime            |
+| `--jwt-refresh-expiration-days` | `jwt.refresh_expiration_days` | `JWT_REFRESH_EXPIRATION_DAYS` | `30`      | Refresh token lifetime           |
 | `--bcrypt-cost`             | `bcrypt.cost`             | `BCRYPT_COST`             | `12`                | Password hashing cost (4-31)     |
+| `--token-retention-days`    | `workers.token_retention_days` | `WORKERS_TOKEN_RETENTION_DAYS` | `7`   | Days a revoked token is kept     |
+| `--workers-interval-hours`  | `workers.interval_hours`  | `WORKERS_INTERVAL_HOURS`  | `24`                | Default job interval in watch mode |
 | `--swagger-endpoint`        | `swagger.endpoint`        | `SWAGGER_ENDPOINT`        | `/docs`             | Swagger UI path                  |
 | `--swagger-basic-auth`      | `swagger.basic_auth`      | `SWAGGER_BASIC_AUTH`      | -                   | Optional `user:pass` for Swagger |
 | `--graphql-endpoint`        | `graphql.endpoint`        | `GRAPHQL_ENDPOINT`        | `/graphql`          | GraphQL path                     |

@@ -7,7 +7,7 @@ use axum::{Router, extract::State};
 use crate::app::AppState;
 
 pub fn router(State(state): State<AppState>) -> Router<AppState> {
-  let router_auth: Router<AppState> = auth::router();
+  let router_auth: Router<AppState> = auth::router(axum::extract::State(state.clone()));
   let router_health: Router<AppState> = health::router();
   let router_users: Router<AppState> = users::router(axum::extract::State(state));
 

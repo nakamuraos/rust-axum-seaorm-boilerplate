@@ -9,3 +9,7 @@ config/config.yml
 .dockerignore
 Dockerfile
 docker-compose.yml
+
+# macOS AppleDouble files
+.DS_Store
+._*

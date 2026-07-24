@@ -5,10 +5,34 @@ services:
     build: .
     volumes:
       - ./.env:/app/.env
+      - ./config:/app/config:ro
     ports:
       - "8080:8080"
     depends_on:
-      - db
+      db:
+        condition: service_healthy
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+
+  # Background jobs, sharing the image and the configuration of the server.
+  worker:
+    container_name: server_worker_container
+    image: server:local
+    build: .
+    entrypoint: ["./worker"]
+    command: ["all", "--watch"]
+    # The image health check probes the HTTP port, which the worker does not serve.
+    healthcheck:
+      disable: true
+    volumes:
+      - ./.env:/app/.env
+      - ./config:/app/config:ro
+    depends_on:
+      db:
+        condition: service_healthy
+    restart: unless-stopped
     logging:
       driver: "json-file"
       options:

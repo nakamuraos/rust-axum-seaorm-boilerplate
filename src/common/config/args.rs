@@ -66,6 +66,18 @@ pub struct Args {
   #[arg(long)]
   pub jwt_expiration_days: Option<i64>,
 
+  /// Refresh token expiration in days
+  #[arg(long)]
+  pub jwt_refresh_expiration_days: Option<i64>,
+
+  /// Days a revoked refresh token is kept before being deleted
+  #[arg(long)]
+  pub token_retention_days: Option<i64>,
+
+  /// Default hours between two runs of a job in watch mode
+  #[arg(long)]
+  pub workers_interval_hours: Option<u64>,
+
   /// Bcrypt hashing cost (4-31)
   #[arg(long)]
   pub bcrypt_cost: Option<u32>,

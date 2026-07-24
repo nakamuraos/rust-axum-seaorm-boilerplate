@@ -17,7 +17,7 @@ COPY --from=planner /app/recipe.json recipe.json
 RUN cargo chef cook --release --recipe-path recipe.json
 COPY . .
 # Build project
-RUN cargo build --release --bin server --bin db
+RUN cargo build --release --bin server --bin db --bin worker
 
 # ============================
 FROM debian:bookworm-slim AS runtime
@@ -36,6 +36,11 @@ RUN apt-get update -y \
 # Copy the compiled binary from the builder stage
 COPY --from=builder /app/target/release/server server
 COPY --from=builder /app/target/release/db db
+COPY --from=builder /app/target/release/worker worker
+
+# The application reads config/config.yml when present, so a file mounted here
+# configures the container without any environment variable.
+RUN mkdir -p /app/config
 
 # Set environment variables
 ENV PORT=8080
