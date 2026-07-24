@@ -10,7 +10,7 @@
   <a href="https://github.com/nakamuraos/rust-axum-seaorm-boilerplate/issues"><img src="https://img.shields.io/github/issues/nakamuraos/rust-axum-seaorm-boilerplate" alt="GitHub issues"></a>
 </p>
 
-A production-ready REST + GraphQL API boilerplate built with [Axum](https://github.com/tokio-rs/axum), [Sea-ORM](https://github.com/SeaQL/sea-orm), and PostgreSQL.
+<p align="center">A production-ready REST + GraphQL API boilerplate built with <a href="https://github.com/tokio-rs/axum">Axum</a>, <a href="https://github.com/SeaQL/sea-orm">Sea-ORM</a>, and PostgreSQL.</p>
 
 ![swagger](./docs/images/swagger.png)
 ![graphql](./docs/images/graphql.png)
@@ -189,25 +189,54 @@ docker-compose up    # or -d for detached
 docker-compose down  # stop
 ```
 
-## Environment Variables
+## Configuration
 
-| Variable                  | Default       | Description                      |
-| ------------------------- | ------------- | -------------------------------- |
-| `APP_ENV`                 | -             | `development` or `production`    |
-| `PORT`                    | `8080`        | Server port                      |
-| `DATABASE_URL`            | -             | PostgreSQL connection string     |
-| `DATABASE_POOL_MAX_SIZE`  | `10`          | Max DB connections               |
-| `DATABASE_TIMEOUT`        | `5`           | Connection timeout (seconds)     |
-| `DATABASE_RUN_MIGRATIONS` | `true` (dev)  | Auto-run migrations on startup   |
-| `DATABASE_RUN_SEEDS`      | `false` (dev) | Auto-run seeds on startup        |
-| `JWT_SECRET`              | -             | JWT signing key                  |
-| `JWT_EXPIRATION_DAYS`     | `7`           | Token lifetime                   |
-| `BCRYPT_COST`             | `12`          | Password hashing cost (4-31)     |
-| `SWAGGER_ENDPOINT`        | `/docs`       | Swagger UI path                  |
-| `SWAGGER_BASIC_AUTH`      | -             | Optional `user:pass` for Swagger |
-| `GRAPHQL_ENDPOINT`        | `/graphql`    | GraphQL path                     |
-| `GRAPHQL_BASIC_AUTH`      | -             | Optional `user:pass` for GraphQL |
-| `RUST_LOG`                | `debug`       | Log level filter                 |
+Settings can come from three sources, listed from the highest precedence to the
+lowest. The first source that provides a value wins, and anything left unset
+falls back to the built-in default.
+
+1. Command line arguments
+2. Environment variables, loaded from `.env` in development
+3. A YAML file, `config/config.yml` by default
+
+Every key in the YAML file has an environment variable derived from its dotted
+path: uppercased, with `.` replaced by `_`. So `database.url` is overridden by
+`DATABASE_URL` and `swagger.basic_auth` by `SWAGGER_BASIC_AUTH`. Adding a key to
+the file therefore adds its variable too, without any extra wiring.
+
+```shell
+cp config/config.example.yml config/config.yml
+cp .env.sample .env
+
+# Use a different YAML file
+./target/release/server --config /etc/app/config.yml
+CONFIG=/etc/app/config.yml ./target/release/server
+
+# Override a single setting
+./target/release/server --port 9000 --database-run-migrations true
+```
+
+Keys in the file that the application does not recognize are logged as a warning
+on startup, which catches typos.
+
+| Argument                    | YAML key                  | Variable                  | Default             | Description                      |
+| --------------------------- | ------------------------- | ------------------------- | ------------------- | -------------------------------- |
+| `--env`                     | `env`                     | `ENV`, `APP_ENV`          | `development`       | `development` or `production`    |
+| `--port`                    | `serve.port`              | `SERVE_PORT`, `PORT`      | `8080`              | Server port                      |
+| `--database-url`            | `database.url`            | `DATABASE_URL`            | -                   | PostgreSQL connection string     |
+| `--database-pool-max-size`  | `database.pool_max_size`  | `DATABASE_POOL_MAX_SIZE`  | `10`                | Max DB connections               |
+| `--database-timeout`        | `database.timeout`        | `DATABASE_TIMEOUT`        | `5`                 | Connection timeout (seconds)     |
+| `--database-run-migrations` | `database.run_migrations` | `DATABASE_RUN_MIGRATIONS` | dev only            | Auto-run migrations on startup   |
+| `--database-run-seeds`      | `database.run_seeds`      | `DATABASE_RUN_SEEDS`      | dev only            | Auto-run seeds on startup        |
+| `--jwt-secret`              | `jwt.secret`              | `JWT_SECRET`              | -                   | JWT signing key                  |
+| `--jwt-expiration-days`     | `jwt.expiration_days`     | `JWT_EXPIRATION_DAYS`     | `7`                 | Token lifetime                   |
+| `--bcrypt-cost`             | `bcrypt.cost`             | `BCRYPT_COST`             | `12`                | Password hashing cost (4-31)     |
+| `--swagger-endpoint`        | `swagger.endpoint`        | `SWAGGER_ENDPOINT`        | `/docs`             | Swagger UI path                  |
+| `--swagger-basic-auth`      | `swagger.basic_auth`      | `SWAGGER_BASIC_AUTH`      | -                   | Optional `user:pass` for Swagger |
+| `--graphql-endpoint`        | `graphql.endpoint`        | `GRAPHQL_ENDPOINT`        | `/graphql`          | GraphQL path                     |
+| `--graphql-basic-auth`      | `graphql.basic_auth`      | `GRAPHQL_BASIC_AUTH`      | -                   | Optional `user:pass` for GraphQL |
+| `--config`                  | -                         | `CONFIG`                  | `config/config.yml` | Path to the YAML file            |
+| -                           | -                         | `RUST_LOG`                | `debug`             | Log level filter                 |
 
 ## Production
 

@@ -1,13 +1,20 @@
+pub mod args;
+pub mod file;
 pub mod shutdown;
 pub mod telemetry;
 
+use clap::Parser;
 use serde::Deserialize;
 use std::{
+  fmt,
   net::{Ipv6Addr, SocketAddr},
   str::FromStr,
   sync::Arc,
 };
 use tracing::info;
+
+use args::Args;
+use file::FileConfig;
 
 pub type Config = Arc<Configuration>;
 
@@ -53,6 +60,9 @@ pub struct Configuration {
   /// Whether to run database seeds on startup
   pub db_run_seeds: bool,
 
+  /// The secret used to sign and verify JWT tokens.
+  pub jwt_secret: Secret,
+
   /// JWT token expiration in days (default: 7)
   pub jwt_expiration_days: i64,
 
@@ -60,80 +70,118 @@ pub struct Configuration {
   pub bcrypt_cost: u32,
 }
 
-#[derive(Deserialize, Debug)]
+#[derive(Deserialize, Debug, Clone)]
 pub enum Environment {
   Development,
   Production,
 }
 
 impl Configuration {
-  /// Creates a new configuration from environment variables.
+  /// Builds the configuration by parsing the command line arguments.
+  ///
+  /// Sources are layered by precedence: command line arguments override
+  /// environment variables, which override the YAML configuration file, which
+  /// overrides the built-in defaults.
   pub fn new() -> Config {
-    let env = env_var("APP_ENV")
-            .parse::<Environment>()
-            .expect("Unable to parse the value of the APP_ENV environment variable. Please make sure it is either \"development\" or \"production\".");
+    Self::from_args(Args::parse())
+  }
 
-    let app_port = env_var("PORT")
-            .parse::<u16>()
-            .expect("Unable to parse the value of the PORT environment variable. Please make sure it is a valid unsigned 16-bit integer");
+  /// Builds the configuration from already parsed command line arguments.
+  pub fn from_args(args: Args) -> Config {
+    let file = FileConfig::load(args.config.as_deref());
 
-    // Swagger endpoint
-    let swagger_endpoint =
-      std::env::var("SWAGGER_ENDPOINT").unwrap_or_else(|_| "/docs".to_string());
+    let env = resolve(
+      &file,
+      "env",
+      &["APP_ENV"],
+      args.env.clone(),
+      Environment::Development,
+    );
 
-    // Swagger basic auth credentials
-    let swagger_basic_auth = std::env::var("SWAGGER_BASIC_AUTH").unwrap_or_else(|_| "".to_string());
+    let app_port = resolve(&file, "serve.port", &["PORT"], args.port, 8080);
 
-    // Graphql endpoint
-    let graphql_endpoint =
-      std::env::var("GRAPHQL_ENDPOINT").unwrap_or_else(|_| "/graphql".to_string());
+    let swagger_endpoint = resolve(
+      &file,
+      "swagger.endpoint",
+      &[],
+      args.swagger_endpoint.clone(),
+      "/docs".to_string(),
+    );
 
-    // Graphql basic auth credentials
-    let graphql_basic_auth = std::env::var("GRAPHQL_BASIC_AUTH").unwrap_or_else(|_| "".to_string());
+    let swagger_basic_auth = resolve(
+      &file,
+      "swagger.basic_auth",
+      &[],
+      args.swagger_basic_auth.clone(),
+      String::new(),
+    );
 
-    let db_dsn = env_var("DATABASE_URL");
+    let graphql_endpoint = resolve(
+      &file,
+      "graphql.endpoint",
+      &[],
+      args.graphql_endpoint.clone(),
+      "/graphql".to_string(),
+    );
 
-    // Default pool size is 10 if not specified
-    let db_pool_max_size = std::env::var("DATABASE_POOL_MAX_SIZE")
-            .unwrap_or_else(|_| "10".to_string())
-            .parse::<u32>()
-            .expect("Unable to parse the value of the DATABASE_POOL_MAX_SIZE environment variable. Please make sure it is a valid unsigned 32-bit integer");
+    let graphql_basic_auth = resolve(
+      &file,
+      "graphql.basic_auth",
+      &[],
+      args.graphql_basic_auth.clone(),
+      String::new(),
+    );
 
-    // Default timeout is 5 seconds if not specified
-    let db_timeout = std::env::var("DATABASE_TIMEOUT")
-            .unwrap_or_else(|_| "5".to_string())
-            .parse::<u64>()
-            .expect("Unable to parse the value of the DATABASE_TIMEOUT environment variable. Please make sure it is a valid unsigned 64-bit integer");
+    let db_dsn = resolve_required(&file, "database.url", &[], args.database_url.clone());
 
-    // Default to true in development, false in production
-    let db_run_migrations = std::env::var("DATABASE_RUN_MIGRATIONS")
-            .unwrap_or_else(|_| match env {
-                Environment::Development => "true".to_string(),
-                Environment::Production => "false".to_string(),
-            })
-            .parse::<bool>()
-            .expect("Unable to parse the value of the DATABASE_RUN_MIGRATIONS environment variable. Please make sure it is a valid boolean");
+    let db_pool_max_size = resolve(
+      &file,
+      "database.pool_max_size",
+      &[],
+      args.database_pool_max_size,
+      10,
+    );
 
-    // Default to true in development, false in production
-    let db_run_seeds = std::env::var("DATABASE_RUN_SEEDS")
-            .unwrap_or_else(|_| match env {
-                Environment::Development => "true".to_string(),
-                Environment::Production => "false".to_string(),
-            })
-            .parse::<bool>()
-            .expect("Unable to parse the value of the DATABASE_RUN_SEEDS environment variable. Please make sure it is a valid boolean");
+    let db_timeout = resolve(&file, "database.timeout", &[], args.database_timeout, 5);
 
-    // Default JWT expiration is 7 days
-    let jwt_expiration_days = std::env::var("JWT_EXPIRATION_DAYS")
-      .unwrap_or_else(|_| "7".to_string())
-      .parse::<i64>()
-      .expect("Unable to parse JWT_EXPIRATION_DAYS. Please make sure it is a valid integer");
+    // Migrations and seeds run automatically in development only
+    let auto_run = matches!(env, Environment::Development);
 
-    // Default bcrypt cost is 12 (valid range: 4-31)
-    let bcrypt_cost = std::env::var("BCRYPT_COST")
-      .unwrap_or_else(|_| "12".to_string())
-      .parse::<u32>()
-      .expect("Unable to parse BCRYPT_COST. Please make sure it is a valid integer (4-31)");
+    let db_run_migrations = resolve(
+      &file,
+      "database.run_migrations",
+      &[],
+      args.database_run_migrations,
+      auto_run,
+    );
+
+    let db_run_seeds = resolve(
+      &file,
+      "database.run_seeds",
+      &[],
+      args.database_run_seeds,
+      auto_run,
+    );
+
+    let jwt_secret = Secret(resolve(
+      &file,
+      "jwt.secret",
+      &[],
+      args.jwt_secret.clone(),
+      "a-string-secret-at-least-256-bits-long".to_string(),
+    ));
+
+    let jwt_expiration_days = resolve(
+      &file,
+      "jwt.expiration_days",
+      &[],
+      args.jwt_expiration_days,
+      7,
+    );
+
+    let bcrypt_cost = resolve(&file, "bcrypt.cost", &[], args.bcrypt_cost, 12);
+
+    file.warn_unknown_keys();
 
     let listen_address = SocketAddr::from((Ipv6Addr::UNSPECIFIED, app_port));
 
@@ -150,6 +198,7 @@ impl Configuration {
       db_timeout,
       db_run_migrations,
       db_run_seeds,
+      jwt_secret,
       jwt_expiration_days,
       bcrypt_cost,
     });
@@ -185,4 +234,98 @@ pub fn env_var(name: &str) -> String {
   std::env::var(name)
     .map_err(|e| format!("{}: {}", name, e))
     .expect("Missing environment variable")
+}
+
+/// A configuration value that must never be written to the logs.
+#[derive(Deserialize, Clone)]
+pub struct Secret(pub String);
+
+impl Secret {
+  pub fn expose(&self) -> &str {
+    &self.0
+  }
+}
+
+impl fmt::Debug for Secret {
+  fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+    f.write_str("[redacted]")
+  }
+}
+
+/// Derives the environment variable name of a dotted configuration path, by
+/// uppercasing it and replacing the separators with underscores.
+fn env_name(path: &str) -> String {
+  path.to_uppercase().replace('.', "_")
+}
+
+/// Picks the first source that provides a value, in precedence order: command
+/// line argument, environment variable, configuration file, default.
+///
+/// The environment variable is derived from the path; `aliases` names extra
+/// variables to accept for it, tried in order after the derived one.
+fn resolve<T>(file: &FileConfig, path: &str, aliases: &[&str], arg: Option<T>, default: T) -> T
+where
+  T: FromStr,
+  <T as FromStr>::Err: fmt::Display,
+{
+  lookup(file, path, aliases, arg).unwrap_or(default)
+}
+
+/// Same as [`resolve`], but the value has no default and must be provided.
+fn resolve_required<T>(file: &FileConfig, path: &str, aliases: &[&str], arg: Option<T>) -> T
+where
+  T: FromStr,
+  <T as FromStr>::Err: fmt::Display,
+{
+  lookup(file, path, aliases, arg).unwrap_or_else(|| {
+    panic!(
+      "Missing configuration value: set {} in the configuration file or the {} environment variable",
+      path,
+      env_name(path)
+    )
+  })
+}
+
+fn lookup<T>(file: &FileConfig, path: &str, aliases: &[&str], arg: Option<T>) -> Option<T>
+where
+  T: FromStr,
+  <T as FromStr>::Err: fmt::Display,
+{
+  // Looked up even when a higher precedence source wins, so that the key
+  // counts as known and is not reported as a typo.
+  let from_file = file.get(path).map(|raw| parse(raw, path));
+
+  if arg.is_some() {
+    return arg;
+  }
+
+  let from_env = std::iter::once(env_name(path))
+    .chain(aliases.iter().map(|alias| alias.to_string()))
+    .find_map(|name| env_value(&name, path));
+
+  from_env.or(from_file)
+}
+
+/// Reads and parses an environment variable, treating an empty value as unset.
+fn env_value<T>(name: &str, path: &str) -> Option<T>
+where
+  T: FromStr,
+  <T as FromStr>::Err: fmt::Display,
+{
+  let raw = std::env::var(name).ok()?;
+  if raw.is_empty() {
+    return None;
+  }
+
+  Some(parse(&raw, path))
+}
+
+fn parse<T>(raw: &str, path: &str) -> T
+where
+  T: FromStr,
+  <T as FromStr>::Err: fmt::Display,
+{
+  raw
+    .parse()
+    .unwrap_or_else(|e| panic!("Unable to parse the value of {}: {}", path, e))
 }

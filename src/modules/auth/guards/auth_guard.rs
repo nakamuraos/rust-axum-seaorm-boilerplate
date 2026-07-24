@@ -16,7 +16,7 @@ pub struct Claims {
 }
 
 pub async fn auth_guard(
-  State(_): State<AppState>,
+  State(state): State<AppState>,
   req: Request,
   next: Next,
 ) -> Result<Response, ApiError> {
@@ -33,14 +33,10 @@ pub async fn auth_guard(
     .strip_prefix("Bearer ")
     .ok_or_else(|| ApiError::Unauthorized("Invalid authorization format".to_string()))?;
 
-  // Get JWT secret from environment
-  let secret = std::env::var("JWT_SECRET")
-    .unwrap_or_else(|_| "a-string-secret-at-least-256-bits-long".to_string());
-
   // Decode and validate the token
   let token_data = decode::<Claims>(
     token,
-    &DecodingKey::from_secret(secret.as_bytes()),
+    &DecodingKey::from_secret(state.cfg.jwt_secret.expose().as_bytes()),
     &Validation::default(),
   )
   .map_err(|_| ApiError::Unauthorized("Invalid token".to_string()))?;

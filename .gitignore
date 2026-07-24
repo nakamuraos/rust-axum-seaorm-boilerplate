@@ -11,6 +11,11 @@ target/
 
 # MacOS
 .DS_Store
+._*
 
 # Env
 .env
+
+# Config
+config/*.yml
+!config/*.example.yml

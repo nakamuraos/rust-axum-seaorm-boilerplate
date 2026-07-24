@@ -5,6 +5,7 @@ tests/
 scripts/
 migrations/
 .env
+config/config.yml
 .dockerignore
 Dockerfile
 docker-compose.yml

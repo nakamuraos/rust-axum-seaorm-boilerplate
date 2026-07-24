@@ -1,0 +1,34 @@
+# Copy to config.yml (or point the CONFIG environment variable at a file)
+# and adjust the values. Every key can be overridden by an environment
+# variable named after its uppercased dotted path with `.` replaced by `_`
+# (e.g. serve.port -> SERVE_PORT, database.url -> DATABASE_URL,
+# swagger.basic_auth -> SWAGGER_BASIC_AUTH); APP_ENV overrides `env` and
+# PORT is honored as an alias for SERVE_PORT.
+
+env: development
+
+serve:
+  port: 8080
+
+database:
+  url: "postgres://postgres:password@db:5432/example"
+  pool_max_size: 50
+  timeout: 5
+  run_migrations: true
+  run_seeds: false
+
+jwt:
+  secret: change-me-to-a-secure-random-string-at-least-256-bits
+  expiration_days: 7
+
+bcrypt:
+  cost: 12
+
+swagger:
+  endpoint: /docs
+  # username:password, empty disables the basic auth protection
+  basic_auth: ""
+
+graphql:
+  endpoint: /graphql
+  basic_auth: ""

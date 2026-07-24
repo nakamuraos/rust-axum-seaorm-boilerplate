@@ -72,6 +72,8 @@ jsonwebtoken = { version = "10.4.0", features = ["rust_crypto"] }
 base64 = "0.22.1"
 bcrypt = "0.19.2"
 validator = { version = "0.20.0", features = ["derive"] }
+clap = { version = "4.6.4", features = ["derive"] }
+serde_yaml_ng = "0.10.0"
 
 [dev-dependencies]
 mockall = "0.15.0"

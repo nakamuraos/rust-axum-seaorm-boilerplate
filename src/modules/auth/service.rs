@@ -75,8 +75,7 @@ pub async fn login(
 }
 
 fn generate_token(user: &UserEntities::Model, cfg: &Config) -> Result<String, ApiError> {
-  let secret = std::env::var("JWT_SECRET")
-    .unwrap_or_else(|_| "a-string-secret-at-least-256-bits-long".to_string());
+  let secret = cfg.jwt_secret.expose();
   let expiration = chrono::Utc::now()
     .checked_add_signed(chrono::Duration::days(cfg.jwt_expiration_days))
     .expect("valid timestamp")

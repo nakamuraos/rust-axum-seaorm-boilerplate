@@ -1,7 +1,8 @@
+use clap::Parser;
 use server::common::config::Configuration;
+use server::common::config::args::Args;
 use server::common::config::telemetry;
 use server::database::Db;
-use std::env;
 use std::process;
 
 fn print_usage() {
@@ -20,16 +21,14 @@ fn print_usage() {
 
 #[tokio::main]
 async fn main() {
-  let args: Vec<String> = env::args().collect();
+  let args = Args::parse();
 
-  if args.len() < 2 {
+  let Some(command) = args.command.clone() else {
     print_usage();
     process::exit(1);
-  }
+  };
 
-  let command = args[1].as_str();
-
-  if !matches!(command, "migrate" | "seed" | "setup") {
+  if !matches!(command.as_str(), "migrate" | "seed" | "setup") {
     eprintln!("Error: unknown command '{}'\n", command);
     print_usage();
     process::exit(1);
@@ -38,12 +37,12 @@ async fn main() {
   dotenvy::dotenv().ok();
   telemetry::setup_tracing();
 
-  let cfg = Configuration::new();
+  let cfg = Configuration::from_args(args);
 
   tracing::info!("Connecting to database...");
   let db = Db::new(&cfg).await.expect("Failed to connect to database");
 
-  match command {
+  match command.as_str() {
     "migrate" => {
       tracing::info!("Running migrations...");
       db.run_migrations().await.expect("Failed to run migrations");
