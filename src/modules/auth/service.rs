@@ -210,7 +210,11 @@ pub async fn cleanup_tokens(
 
 /// Stores a freshly generated refresh token and returns its plaintext, which is
 /// the only moment the plaintext exists.
-async fn issue_refresh_token<C>(conn: &C, cfg: &Config, user_id: Uuid) -> Result<String, ApiError>
+pub(crate) async fn issue_refresh_token<C>(
+  conn: &C,
+  cfg: &Config,
+  user_id: Uuid,
+) -> Result<String, ApiError>
 where
   C: sea_orm::ConnectionTrait,
 {
@@ -245,7 +249,7 @@ fn hash_token(token: &str) -> String {
   digest.iter().map(|byte| format!("{:02x}", byte)).collect()
 }
 
-fn generate_token(user: &UserEntities::Model, cfg: &Config) -> Result<String, ApiError> {
+pub(crate) fn generate_token(user: &UserEntities::Model, cfg: &Config) -> Result<String, ApiError> {
   let secret = cfg.jwt_secret.expose();
   let expiration = chrono::Utc::now()
     .checked_add_signed(chrono::Duration::days(cfg.jwt_expiration_days))

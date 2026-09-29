@@ -2,6 +2,8 @@ pub mod controller;
 pub mod dto;
 pub mod entities;
 pub mod guards;
+#[cfg(feature = "oauth2")]
+pub mod oauth;
 pub mod service;
 
 use axum::{
@@ -21,10 +23,15 @@ pub fn router(State(state): State<AppState>) -> Router<AppState> {
     .route("/v1/auth/sessions", get(controller::sessions))
     .layer(axum::middleware::from_fn_with_state(state, auth_guard));
 
-  Router::new()
+  let router = Router::new()
     .route("/v1/auth/register", post(controller::register))
     .route("/v1/auth/login", post(controller::login))
     .route("/v1/auth/refresh", post(controller::refresh))
     .route("/v1/auth/logout", post(controller::logout))
-    .merge(authenticated_routes)
+    .merge(authenticated_routes);
+
+  #[cfg(feature = "oauth2")]
+  let router = router.merge(oauth::router());
+
+  router
 }

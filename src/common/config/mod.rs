@@ -1,5 +1,6 @@
 pub mod args;
 pub mod file;
+pub mod oauth;
 pub mod shutdown;
 pub mod telemetry;
 
@@ -15,6 +16,7 @@ use tracing::info;
 
 use args::Args;
 use file::FileConfig;
+use oauth::{OAuthConfig, OAuthProvider};
 
 pub type Config = Arc<Configuration>;
 
@@ -77,6 +79,9 @@ pub struct Configuration {
 
   /// Bcrypt hashing cost (default: 12, range: 4-31)
   pub bcrypt_cost: u32,
+
+  /// Login with external OAuth2 / OpenID Connect providers.
+  pub oauth: OAuthConfig,
 }
 
 #[derive(Deserialize, Debug, Clone)]
@@ -214,6 +219,26 @@ impl Configuration {
 
     let bcrypt_cost = resolve(&file, "bcrypt.cost", &[], args.bcrypt_cost, 12);
 
+    let oauth = OAuthConfig {
+      redirect_base_url: resolve(
+        &file,
+        "oauth.redirect_base_url",
+        &[],
+        None,
+        "http://localhost:8080".to_string(),
+      ),
+      success_redirect_url: resolve(
+        &file,
+        "oauth.success_redirect_url",
+        &[],
+        None,
+        String::new(),
+      ),
+      google: oauth_provider(&file, "google"),
+      github: oauth_provider(&file, "github"),
+      oidc: oauth_provider(&file, "oidc"),
+    };
+
     file.warn_unknown_keys();
 
     let listen_address = SocketAddr::from((Ipv6Addr::UNSPECIFIED, app_port));
@@ -237,6 +262,7 @@ impl Configuration {
       token_retention_days,
       workers_interval_hours,
       bcrypt_cost,
+      oauth,
     });
 
     // Log the current configuration
@@ -272,8 +298,24 @@ pub fn env_var(name: &str) -> String {
     .expect("Missing environment variable")
 }
 
+/// Reads the `oauth.<name>.*` keys of one provider.
+fn oauth_provider(file: &FileConfig, name: &str) -> OAuthProvider {
+  let key = |field: &str| format!("oauth.{name}.{field}");
+  OAuthProvider {
+    client_id: resolve(file, &key("client_id"), &[], None, String::new()),
+    client_secret: Secret(resolve(
+      file,
+      &key("client_secret"),
+      &[],
+      None,
+      String::new(),
+    )),
+    issuer: resolve(file, &key("issuer"), &[], None, String::new()),
+  }
+}
+
 /// A configuration value that must never be written to the logs.
-#[derive(Deserialize, Clone)]
+#[derive(Deserialize, Clone, Default)]
 pub struct Secret(pub String);
 
 impl Secret {

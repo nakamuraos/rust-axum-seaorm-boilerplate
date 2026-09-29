@@ -70,6 +70,8 @@ src/
 | `POST`     | `/api/v1/auth/logout`   | -           | Revoke one refresh token     |
 | `POST`     | `/api/v1/auth/logout-all` | JWT       | Revoke all user sessions     |
 | `GET`      | `/api/v1/auth/sessions` | JWT         | List logins of the caller    |
+| `GET`      | `/api/v1/auth/oauth/:provider/login`    | -   | Start login with `github`, `google` or `oidc` |
+| `GET`      | `/api/v1/auth/oauth/:provider/callback` | -   | Provider redirect target, returns the token pair |
 | `GET`      | `/api/v1/health`        | -           | Health check                 |
 | `GET`      | `/api/v1/users`         | Admin       | List users (paginated)       |
 | `POST`     | `/api/v1/users`         | Admin       | Create user                  |
@@ -293,8 +295,52 @@ on startup, which catches typos.
 | `--swagger-basic-auth`      | `swagger.basic_auth`      | `SWAGGER_BASIC_AUTH`      | -                   | Optional `user:pass` for Swagger |
 | `--graphql-endpoint`        | `graphql.endpoint`        | `GRAPHQL_ENDPOINT`        | `/graphql`          | GraphQL path                     |
 | `--graphql-basic-auth`      | `graphql.basic_auth`      | `GRAPHQL_BASIC_AUTH`      | -                   | Optional `user:pass` for GraphQL |
+| -                           | `oauth.redirect_base_url` | `OAUTH_REDIRECT_BASE_URL` | `http://localhost:8080` | Public URL used for callbacks |
+| -                           | `oauth.success_redirect_url` | `OAUTH_SUCCESS_REDIRECT_URL` | -        | Redirect target after login      |
+| -                           | `oauth.{google,github,oidc}.client_id` / `client_secret` | `OAUTH_GITHUB_CLIENT_ID`... | - | Provider credentials (`oidc` also takes `issuer`) |
 | `--config`                  | -                         | `CONFIG`                  | `config/config.yml` | Path to the YAML file            |
 | -                           | -                         | `RUST_LOG`                | `debug`             | Log level filter                 |
+
+## Login with OAuth2 / OpenID Connect
+
+Users can sign in with an external provider and get the same token pair as a
+password login. The flow is the authorization code flow with PKCE.
+
+| Provider | Protocol | Cargo feature |
+| -------- | -------- | ------------- |
+| `github` | OAuth2   | `oauth2`      |
+| `google` | OIDC     | `oidc`        |
+| `oidc`   | Any OIDC provider (Keycloak, Auth0, Entra ID...) | `oidc` |
+
+Both features are on by default. A provider is only enabled once its
+credentials are set, so nothing changes until you configure one:
+
+```yaml
+oauth:
+  redirect_base_url: https://api.example.com
+  success_redirect_url: https://app.example.com/login/done # optional
+  github:
+    client_id: ...
+    client_secret: ...
+  oidc:
+    issuer: https://keycloak.example.com/realms/main
+    client_id: ...
+    client_secret: ...
+```
+
+Register `{redirect_base_url}/api/v1/auth/oauth/{provider}/callback` as the
+redirect URI at the provider, then send the browser to
+`/api/v1/auth/oauth/{provider}/login`.
+
+- Without `success_redirect_url` the callback answers with the JSON token pair.
+  With it, the browser is redirected there with `#token=...&refresh_token=...`
+  in the URL fragment.
+- An account is matched by the provider's stable subject id. A first login is
+  linked to the existing user with the same email, or creates one, but only if
+  the provider reports the email as verified.
+- Users created this way have no usable password.
+- For a REST-only build without these flows: `cargo build --no-default-features`
+  (add `--features graphql` to keep GraphQL).
 
 ## Production
 

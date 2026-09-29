@@ -21,7 +21,9 @@ path = "src/workers/main.rs"
 name = "worker"
 
 [features]
-default = ["graphql"]
+default = ["graphql", "oauth2", "oidc"]
+oauth2 = ["dep:oauth2"]
+oidc = ["oauth2", "dep:openidconnect"]
 graphql = ["dep:seaography", "dep:async-graphql", "dep:async-graphql-axum", "sea-orm/seaography"]
 
 [dependencies]
@@ -84,6 +86,8 @@ serde_yaml_ng = "0.10.0"
 sha2 = "0.11.0"
 rand = "0.10.3"
 async-trait = "0.1.92"
+oauth2 = { version = "5.0.0", optional = true }
+openidconnect = { version = "4.0.1", optional = true }
 
 [dev-dependencies]
 mockall = "0.15.0"
