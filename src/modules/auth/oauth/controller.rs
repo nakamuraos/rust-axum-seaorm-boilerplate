@@ -13,6 +13,7 @@ use super::{
 };
 use crate::app::AppState;
 use crate::common::errors::ApiError;
+use crate::modules::auth::dto::AuthResponse;
 
 #[derive(Deserialize)]
 pub struct CallbackQuery {
@@ -22,6 +23,18 @@ pub struct CallbackQuery {
   error: Option<String>,
 }
 
+#[utoipa::path(
+  get,
+  tag = "Auth",
+  path = "/api/v1/auth/oauth/{provider}/login",
+  operation_id = "authOAuthLogin",
+  params(("provider" = String, Path, description = "`github`, `google` or `oidc`")),
+  responses(
+    (status = 307, description = "Redirect to the provider, with the login state in a cookie"),
+    (status = 404, description = "Unknown or disabled provider"),
+    (status = 500, description = "Internal server error")
+  )
+)]
 /// Starts a login: redirects the browser to the provider.
 pub async fn login(
   State(state): State<AppState>,
@@ -49,6 +62,26 @@ pub async fn login(
   )
 }
 
+#[utoipa::path(
+  get,
+  tag = "Auth",
+  path = "/api/v1/auth/oauth/{provider}/callback",
+  operation_id = "authOAuthCallback",
+  params(
+    ("provider" = String, Path, description = "`github`, `google` or `oidc`"),
+    ("code" = Option<String>, Query, description = "Authorization code from the provider"),
+    ("state" = Option<String>, Query, description = "Anti-CSRF value from the provider"),
+    ("error" = Option<String>, Query, description = "Set by the provider when the login failed")
+  ),
+  responses(
+    (status = 200, description = "Login successful", body = AuthResponse),
+    (status = 303, description = "Redirect to `oauth.success_redirect_url` with the tokens in the fragment"),
+    (status = 400, description = "Missing code or state"),
+    (status = 401, description = "Invalid state, refused login or unverified email"),
+    (status = 404, description = "Unknown or disabled provider"),
+    (status = 500, description = "Internal server error")
+  )
+)]
 /// Completes a login: the provider redirects the browser back here.
 pub async fn callback(
   State(state): State<AppState>,

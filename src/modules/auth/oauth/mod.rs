@@ -6,15 +6,25 @@
 //! password login.
 
 mod account;
-mod controller;
+pub mod controller;
 mod flow;
 mod github;
 #[cfg(feature = "oidc")]
 mod oidc;
 
 use axum::{Router, routing::get};
+use utoipa::OpenApi;
 
 use crate::app::AppState;
+
+/// The OAuth endpoints of the OpenAPI document.
+///
+/// `utoipauto` scans the source files without knowing which Cargo features are
+/// on, so `api_doc` excludes this module from the scan and merges this document
+/// in only when the feature is enabled.
+#[derive(OpenApi)]
+#[openapi(paths(controller::login, controller::callback))]
+pub struct ApiDoc;
 
 /// Which provider a request is for, named by the `{provider}` path segment.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
