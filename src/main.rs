@@ -47,6 +47,7 @@ async fn main() {
   let router = server::app::router(cfg.clone(), db);
 
   tracing::info!("Swagger at http://{}{}", cfg.listen_address, "/docs");
+  #[cfg(feature = "graphql")]
   tracing::info!(
     "GraphQL at http://{}{}",
     cfg.listen_address,

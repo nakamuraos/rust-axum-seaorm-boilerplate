@@ -20,6 +20,10 @@ name = "db"
 path = "src/workers/main.rs"
 name = "worker"
 
+[features]
+default = ["graphql"]
+graphql = ["dep:seaography", "dep:async-graphql", "dep:async-graphql-axum", "sea-orm/seaography"]
+
 [dependencies]
 tokio = { version = "1.53.1", features = ["full"] }
 axum = "0.8.9"
@@ -41,7 +45,6 @@ sea-orm = { version = "2.0.4", features = [
   "with-chrono",
   "with-json",
   "with-uuid",
-  "seaography",
 ] }
 sea-orm-migration = { version = "2.0.4", features = ["runtime-tokio-rustls"] }
 
@@ -64,14 +67,14 @@ utoipa = "6.0.0"
 utoipa-swagger-ui = { version = "10.0.1", features = ["axum"] }
 utoipa-axum = "0.3.0"
 utoipauto = "0.3.1"
-seaography = { version = "2.0.0-rc.9", features = [
+seaography = { version = "2.0.0-rc.9", optional = true, features = [
   "with-decimal",
   "with-chrono",
   "with-postgres-array",
   "with-uuid",
 ] }
-async-graphql-axum = "7.0.19"
-async-graphql = "7.0.19"
+async-graphql-axum = { version = "7.0.19", optional = true }
+async-graphql = { version = "7.0.19", optional = true }
 jsonwebtoken = { version = "11.1.0", features = ["rust_crypto"] }
 base64 = "0.23.1"
 bcrypt = "0.19.3"
