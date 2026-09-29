@@ -1,6 +1,8 @@
 use axum::Router;
 
-use crate::common::{api_doc, config::Config, config::telemetry, graphql, middlewares};
+#[cfg(feature = "graphql")]
+use crate::common::graphql;
+use crate::common::{api_doc, config::Config, config::telemetry, middlewares};
 use crate::database::Db;
 use crate::modules;
 
@@ -41,15 +43,15 @@ pub fn router(cfg: Config, db: Db) -> Router {
   // Create the API documentation using OpenAPI and Swagger UI.
   let api_doc = api_doc::swagger_ui(&app_state.cfg);
 
-  // Create the GraphQL router with playground and query handler.
-  let graphql_router = graphql::router(app_state.clone());
-
   // Combine all the routes and apply the middleware layers.
   // The order of the layers is important. The first layer is the outermost layer.
-  Router::new()
-    .merge(router)
-    .merge(api_doc)
-    .merge(graphql_router)
+  let app = Router::new().merge(router).merge(api_doc);
+
+  // Add the GraphQL router with playground and query handler.
+  #[cfg(feature = "graphql")]
+  let app = app.merge(graphql::router(app_state.clone()));
+
+  app
     .layer(normalize_path_layer)
     .layer(cors_layer)
     .layer(timeout_layer)

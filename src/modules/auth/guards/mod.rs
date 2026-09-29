@@ -1,5 +1,6 @@
 pub mod admin_guard;
 pub mod auth_guard;
+#[cfg(feature = "graphql")]
 pub mod graphql_guards;
 pub mod owner_guard;
 

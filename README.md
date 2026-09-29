@@ -131,6 +131,12 @@ The server starts at `http://localhost:8080`. Migrations and seeds run automatic
 - Swagger UI: `http://localhost:8080/docs`
 - GraphQL: `http://localhost:8080/graphql`
 
+GraphQL (Seaography) is enabled by the default `graphql` Cargo feature. For a REST-only build:
+
+```shell
+cargo run --no-default-features
+```
+
 ### Migrations & Seeds
 
 [Migrations](https://www.sea-ql.org/SeaORM/docs/migration/running-migration/) and [seeds](https://www.sea-ql.org/SeaORM/docs/migration/seeding-data/) are managed separately in `src/database/` and run programmatically on application startup. They run automatically in development (`APP_ENV=development`, `DATABASE_RUN_MIGRATIONS=true` and/or `DATABASE_RUN_SEEDS=false`) and are disabled by default in production.
