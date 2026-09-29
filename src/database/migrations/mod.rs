@@ -3,6 +3,7 @@ pub use sea_orm_migration::prelude::*;
 mod m20240126114845_create_users_table;
 mod m20260722000001_add_profile_fields_to_users;
 mod m20260724000001_create_refresh_tokens_table;
+mod m20260728000001_create_user_identities_table;
 
 pub struct Migrator;
 
@@ -13,6 +14,7 @@ impl MigratorTrait for Migrator {
       Box::new(m20240126114845_create_users_table::Migration),
       Box::new(m20260722000001_add_profile_fields_to_users::Migration),
       Box::new(m20260724000001_create_refresh_tokens_table::Migration),
+      Box::new(m20260728000001_create_user_identities_table::Migration),
     ]
   }
 }

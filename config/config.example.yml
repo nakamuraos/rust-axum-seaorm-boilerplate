@@ -39,3 +39,24 @@ swagger:
 graphql:
   endpoint: /graphql
   basic_auth: ""
+
+# Login with external providers. A provider is enabled once its credentials are
+# set; each callback URL to register with the provider is
+# {redirect_base_url}/api/v1/auth/oauth/{google|github|oidc}/callback
+# (requires the `oauth2` / `oidc` Cargo features, enabled by default).
+oauth:
+  redirect_base_url: http://localhost:8080
+  # Empty answers the callback with JSON; otherwise the browser is redirected to
+  # this URL with `#token=...&refresh_token=...` appended.
+  success_redirect_url: ""
+  google:
+    client_id: ""
+    client_secret: ""
+  github:
+    client_id: ""
+    client_secret: ""
+  # Any OpenID Connect provider, e.g. https://keycloak.example.com/realms/main
+  oidc:
+    issuer: ""
+    client_id: ""
+    client_secret: ""
