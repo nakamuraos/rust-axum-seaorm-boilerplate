@@ -32,6 +32,9 @@ pub struct UserDto {
   pub bio: Option<String>,
   pub status: String,
   pub role: String,
+  pub merged_into: Option<String>,
+  #[schema(format = "date-time")]
+  pub merged_at: Option<String>,
   #[schema(format = "date-time")]
   pub created_at: Option<String>,
   #[schema(format = "date-time")]
@@ -48,6 +51,10 @@ impl From<UserProfile> for UserDto {
       bio: profile.bio,
       status: profile.status.into_value(),
       role: profile.role.into_value(),
+      merged_into: profile.merged_into.map(|id| id.to_string()),
+      merged_at: profile
+        .merged_at
+        .map(|at| at.to_rfc3339_opts(SecondsFormat::Millis, true)),
       created_at: Some(
         profile
           .created_at
@@ -72,6 +79,9 @@ impl From<Model> for UserDto {
       bio: model.bio,
       status: model.status,
       role: model.role,
+      session_version: model.session_version,
+      merged_into: model.merged_into,
+      merged_at: model.merged_at,
       created_at: model.created_at,
       updated_at: model.updated_at,
     }
@@ -242,6 +252,8 @@ mod tests {
       bio: None,
       status: "Active".to_string(),
       role: "User".to_string(),
+      merged_into: None,
+      merged_at: None,
       created_at: Some("2024-01-01T00:00:00.000Z".to_string()),
       updated_at: Some("2024-01-02T00:00:00.000Z".to_string()),
     };

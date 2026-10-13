@@ -4,7 +4,6 @@ pub mod entities;
 pub mod guards;
 #[cfg(feature = "oauth2")]
 pub mod oauth;
-pub(crate) mod password;
 pub mod service;
 
 use axum::{
@@ -22,7 +21,17 @@ pub fn router(State(state): State<AppState>) -> Router<AppState> {
   let authenticated_routes = Router::new()
     .route("/v1/auth/logout-all", post(controller::logout_all))
     .route("/v1/auth/sessions", get(controller::sessions))
-    .layer(axum::middleware::from_fn_with_state(state, auth_guard));
+    .route("/v1/auth/accounts/proof", post(controller::account_proof))
+    .route("/v1/auth/accounts/identities", get(controller::identities))
+    .route(
+      "/v1/auth/accounts/merge/preview",
+      post(controller::merge_preview),
+    )
+    .route("/v1/auth/accounts/merge", post(controller::merge_accounts))
+    .layer(axum::middleware::from_fn_with_state(
+      state.clone(),
+      auth_guard,
+    ));
 
   let router = Router::new()
     .route("/v1/auth/register", post(controller::register))
@@ -32,7 +41,7 @@ pub fn router(State(state): State<AppState>) -> Router<AppState> {
     .merge(authenticated_routes);
 
   #[cfg(feature = "oauth2")]
-  let router = router.merge(oauth::router());
+  let router = router.merge(oauth::router(state));
 
   router
 }

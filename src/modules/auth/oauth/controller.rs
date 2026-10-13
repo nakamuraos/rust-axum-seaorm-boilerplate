@@ -1,27 +1,17 @@
-use axum::{
-  Json,
-  extract::{Path, Query, State},
-  http::{HeaderMap, header},
-  response::{AppendHeaders, IntoResponse, Redirect, Response},
-};
-use serde::Deserialize;
-
 use super::{
-  Profile, Provider, account,
-  flow::{self, Flow},
-  github,
+  dto::{AuthorizationResponse, CallbackQuery, CallbackResponse},
+  service,
 };
 use crate::app::AppState;
-use crate::common::errors::ApiError;
-use crate::modules::auth::dto::AuthResponse;
-
-#[derive(Deserialize)]
-pub struct CallbackQuery {
-  code: Option<String>,
-  state: Option<String>,
-  /// Set by the provider instead of `code` when the user refuses or it fails.
-  error: Option<String>,
-}
+use crate::common::{errors::ApiError, extractors::ValidatedJson};
+use crate::modules::auth::dto::LinkIdentityRequest;
+use axum::{
+  Extension,
+  extract::{Path, Query, State},
+  http::{HeaderMap, header},
+  response::{IntoResponse, Response},
+};
+use uuid::Uuid;
 
 #[utoipa::path(
   get,
@@ -40,26 +30,7 @@ pub async fn login(
   State(state): State<AppState>,
   Path(provider): Path<String>,
 ) -> Result<Response, ApiError> {
-  let provider = parse(&provider)?;
-  let callback_url = callback_url(&state, provider);
-
-  let (url, flow) = match provider {
-    Provider::Github => github::authorize(&state.cfg, callback_url)?,
-    #[cfg(feature = "oidc")]
-    Provider::Google | Provider::Oidc => {
-      let settings = super::oidc::settings(&state.cfg, provider == Provider::Google)?;
-      super::oidc::authorize(&settings, &super::oidc::http()?, callback_url).await?
-    }
-  };
-
-  let cookie = flow.to_cookie(&state.cfg)?;
-  Ok(
-    (
-      AppendHeaders([(header::SET_COOKIE, cookie)]),
-      Redirect::temporary(&url),
-    )
-      .into_response(),
-  )
+  Ok(service::login(&state.cfg, &provider).await?.into_response())
 }
 
 #[utoipa::path(
@@ -74,11 +45,12 @@ pub async fn login(
     ("error" = Option<String>, Query, description = "Set by the provider when the login failed")
   ),
   responses(
-    (status = 200, description = "Login successful", body = AuthResponse),
+    (status = 200, description = "Session tokens or an account ownership proof", body = CallbackResponse),
     (status = 303, description = "Redirect to `oauth.success_redirect_url` with the tokens in the fragment"),
     (status = 400, description = "Missing code or state"),
     (status = 401, description = "Invalid state, refused login or unverified email"),
     (status = 404, description = "Unknown or disabled provider"),
+    (status = 409, description = "Identity belongs to another account; use explicit merge"),
     (status = 500, description = "Internal server error")
   )
 )]
@@ -89,64 +61,197 @@ pub async fn callback(
   Query(query): Query<CallbackQuery>,
   headers: HeaderMap,
 ) -> Result<Response, ApiError> {
-  let provider = parse(&provider)?;
-
-  if let Some(error) = query.error {
-    return Err(ApiError::Unauthorized(format!(
-      "Provider refused the login: {}",
-      error
-    )));
-  }
-  let (Some(code), Some(returned_state)) = (query.code, query.state) else {
-    return Err(ApiError::InvalidRequest(
-      "Missing code or state".to_string(),
-    ));
-  };
-
-  let cookie_header = headers
+  let cookie = headers
     .get(header::COOKIE)
     .and_then(|value| value.to_str().ok());
-  let flow = Flow::from_cookie_header(&state.cfg, cookie_header)?;
-  if flow.provider != provider.as_str() || flow.state != returned_state {
-    return Err(ApiError::Unauthorized(
-      "Invalid or expired OAuth state".to_string(),
-    ));
-  }
-
-  let callback_url = callback_url(&state, provider);
-  let profile: Profile = match provider {
-    Provider::Github => github::profile(&state.cfg, callback_url, code, &flow).await?,
-    #[cfg(feature = "oidc")]
-    Provider::Google | Provider::Oidc => {
-      let settings = super::oidc::settings(&state.cfg, provider == Provider::Google)?;
-      super::oidc::profile(&settings, &super::oidc::http()?, callback_url, code, &flow).await?
-    }
-  };
-
-  let auth = account::sign_in(&state.db.conn, &state.cfg, provider.as_str(), profile).await?;
-  let clear = AppendHeaders([(header::SET_COOKIE, flow::clear_cookie(&state.cfg))]);
-
-  let target = &state.cfg.oauth.success_redirect_url;
-  if target.is_empty() {
-    Ok((clear, Json(auth)).into_response())
-  } else {
-    // In the fragment, so the tokens are never sent to a server or logged.
-    let url = format!(
-      "{}#token={}&refresh_token={}",
-      target, auth.token, auth.refresh_token
-    );
-    Ok((clear, Redirect::to(&url)).into_response())
-  }
-}
-
-fn parse(name: &str) -> Result<Provider, ApiError> {
-  Provider::parse(name).ok_or_else(|| ApiError::NotFound("Unknown provider".to_string()))
-}
-
-fn callback_url(state: &AppState, provider: Provider) -> String {
-  format!(
-    "{}/api/v1/auth/oauth/{}/callback",
-    state.cfg.oauth.redirect_base_url.trim_end_matches('/'),
-    provider.as_str()
+  Ok(
+    service::callback(&state.db.conn, &state.cfg, &provider, query, cookie)
+      .await?
+      .into_callback(&state.cfg),
   )
+}
+
+#[utoipa::path(
+  post,
+  tag = "Auth",
+  path = "/api/v1/auth/oauth/{provider}/link",
+  operation_id = "authOAuthLink",
+  security(("bearerAuth" = [])),
+  params(("provider" = String, Path)),
+  request_body = LinkIdentityRequest,
+  responses(
+    (status = 200, description = "Authorization URL; navigate the browser to it", body = AuthorizationResponse),
+    (status = 401, description = "Invalid ownership proof"),
+    (status = 409, description = "Identity belongs to another account")
+  )
+)]
+pub async fn link(
+  State(state): State<AppState>,
+  Path(provider): Path<String>,
+  Extension(user_id): Extension<Uuid>,
+  ValidatedJson(req): ValidatedJson<LinkIdentityRequest>,
+) -> Result<Response, ApiError> {
+  Ok(
+    service::link(&state.cfg, user_id, &provider, req)
+      .await?
+      .into_response(),
+  )
+}
+
+#[utoipa::path(
+  post,
+  tag = "Auth",
+  path = "/api/v1/auth/oauth/{provider}/verify",
+  operation_id = "authOAuthVerify",
+  security(("bearerAuth" = [])),
+  params(("provider" = String, Path)),
+  responses(
+    (status = 200, description = "Authorization URL; callback returns an ownership proof", body = AuthorizationResponse),
+    (status = 401, description = "Unauthorized")
+  )
+)]
+pub async fn verify(
+  State(state): State<AppState>,
+  Path(provider): Path<String>,
+  Extension(user_id): Extension<Uuid>,
+) -> Result<Response, ApiError> {
+  Ok(
+    service::verify(&state.db.conn, &state.cfg, user_id, &provider)
+      .await?
+      .into_response(),
+  )
+}
+
+#[cfg(test)]
+mod tests {
+  use super::super::flow::{Flow, Intent};
+  use super::*;
+  use crate::common::config::{Secret, tests::config};
+  use crate::database::Db;
+  use crate::modules::auth::{
+    service::ownership,
+    service::{generate_token, tests::user},
+  };
+  use crate::modules::users::enums::{UserRole, UserStatus};
+  use axum::{
+    body::{Body, to_bytes},
+    http::{Request, StatusCode},
+  };
+  use sea_orm::{DbBackend, MockDatabase};
+  use tower::ServiceExt;
+
+  #[tokio::test]
+  async fn test_link_returns_browser_url_and_signed_target_intent() {
+    let account = user(UserStatus::Active, UserRole::User);
+    let mut cfg = config();
+    std::sync::Arc::get_mut(&mut cfg)
+      .unwrap()
+      .oauth
+      .github
+      .client_id = "client".into();
+    std::sync::Arc::get_mut(&mut cfg)
+      .unwrap()
+      .oauth
+      .github
+      .client_secret = Secret("secret".into());
+    std::sync::Arc::get_mut(&mut cfg)
+      .unwrap()
+      .oauth
+      .redirect_base_url = "http://localhost:8080".into();
+    let proof = ownership::issue(&cfg, &account).unwrap().proof_token;
+    let db = MockDatabase::new(DbBackend::Postgres)
+      .append_query_results([[account.clone()]])
+      .into_connection();
+    let state = AppState {
+      db: Db { conn: db },
+      cfg: cfg.clone(),
+    };
+    let app = super::super::router(state.clone()).with_state(state);
+    let response = app
+      .oneshot(
+        Request::builder()
+          .method("POST")
+          .uri("/v1/auth/oauth/github/link")
+          .header(
+            "authorization",
+            format!("Bearer {}", generate_token(&account, &cfg).unwrap()),
+          )
+          .header("content-type", "application/json")
+          .body(Body::from(
+            serde_json::json!({"proof_token": proof}).to_string(),
+          ))
+          .unwrap(),
+      )
+      .await
+      .unwrap();
+    assert_eq!(response.status(), StatusCode::OK);
+    assert_eq!(response.headers()[header::CACHE_CONTROL], "no-store");
+    let cookie = response.headers()[header::SET_COOKIE].to_str().unwrap();
+    let flow = Flow::from_cookie_header(&cfg, Some(cookie)).unwrap();
+    assert!(matches!(flow.intent, Intent::Link { proof_token } if proof_token == proof));
+    let body: serde_json::Value =
+      serde_json::from_slice(&to_bytes(response.into_body(), 8192).await.unwrap()).unwrap();
+    let url = body["authorization_url"].as_str().unwrap();
+    assert!(url.starts_with("https://github.com/login/oauth/authorize?"));
+    assert!(url.contains(&format!("state={}", flow.state)));
+    assert!(url.contains("code_challenge="));
+  }
+
+  #[tokio::test]
+  async fn test_connect_endpoints_require_authentication() {
+    for path in ["link", "verify"] {
+      let state = AppState {
+        db: Db {
+          conn: MockDatabase::new(DbBackend::Postgres).into_connection(),
+        },
+        cfg: config(),
+      };
+      let app = super::super::router(state.clone()).with_state(state);
+      let response = app
+        .oneshot(
+          Request::builder()
+            .method("POST")
+            .uri(format!("/v1/auth/oauth/github/{path}"))
+            .body(Body::empty())
+            .unwrap(),
+        )
+        .await
+        .unwrap();
+      assert_eq!(response.status(), StatusCode::UNAUTHORIZED);
+    }
+  }
+
+  #[tokio::test]
+  async fn test_link_rejects_proof_of_a_different_account() {
+    let account = user(UserStatus::Active, UserRole::User);
+    let cfg = config();
+    let other = user(UserStatus::Active, UserRole::User);
+    let proof = ownership::issue(&cfg, &other).unwrap().proof_token;
+    let db = MockDatabase::new(DbBackend::Postgres)
+      .append_query_results([[account.clone()]])
+      .into_connection();
+    let state = AppState {
+      db: Db { conn: db },
+      cfg: cfg.clone(),
+    };
+    let app = super::super::router(state.clone()).with_state(state);
+    let response = app
+      .oneshot(
+        Request::builder()
+          .method("POST")
+          .uri("/v1/auth/oauth/github/link")
+          .header(
+            "authorization",
+            format!("Bearer {}", generate_token(&account, &cfg).unwrap()),
+          )
+          .header("content-type", "application/json")
+          .body(Body::from(
+            serde_json::json!({"proof_token": proof}).to_string(),
+          ))
+          .unwrap(),
+      )
+      .await
+      .unwrap();
+    assert_eq!(response.status(), StatusCode::UNAUTHORIZED);
+  }
 }

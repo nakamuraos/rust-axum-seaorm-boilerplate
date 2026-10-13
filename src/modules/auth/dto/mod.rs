@@ -76,6 +76,65 @@ pub struct LogoutResponse {
   pub revoked: u64,
 }
 
+#[derive(Deserialize, ToSchema, Validate)]
+pub struct OwnershipProofRequest {
+  #[validate(length(min = 8, max = 64))]
+  pub password: String,
+}
+
+#[derive(Debug, Serialize, ToSchema)]
+pub struct OwnershipProofResponse {
+  #[schema(value_type = String, format = "uuid")]
+  pub user_id: uuid::Uuid,
+  pub proof_token: String,
+  pub expires_in: u64,
+}
+
+#[derive(Deserialize, ToSchema, Validate)]
+pub struct LinkIdentityRequest {
+  #[validate(length(min = 1, max = 4096))]
+  pub proof_token: String,
+}
+
+#[derive(Deserialize, ToSchema, Validate)]
+pub struct MergeAccountsRequest {
+  #[schema(value_type = String, format = "uuid")]
+  pub source_user_id: uuid::Uuid,
+  #[validate(length(min = 1, max = 4096))]
+  pub target_proof: String,
+  #[validate(length(min = 1, max = 4096))]
+  pub source_proof: String,
+  #[serde(default)]
+  pub confirm: bool,
+}
+
+#[derive(Debug, Serialize, ToSchema)]
+pub struct LinkedIdentityDto {
+  pub id: String,
+  pub provider: String,
+  pub subject: String,
+}
+
+impl From<crate::modules::auth::entities::identity::Model> for LinkedIdentityDto {
+  fn from(identity: crate::modules::auth::entities::identity::Model) -> Self {
+    Self {
+      id: identity.id.to_string(),
+      provider: identity.provider,
+      subject: identity.subject,
+    }
+  }
+}
+
+#[derive(Debug, Serialize, ToSchema)]
+pub struct MergePreviewResponse {
+  pub target: UserDto,
+  pub source: UserDto,
+  pub identities_to_transfer: Vec<LinkedIdentityDto>,
+  pub can_merge: bool,
+  pub conflicts: Vec<String>,
+  pub consequences: Vec<String>,
+}
+
 #[cfg(test)]
 mod tests {
   use super::*;

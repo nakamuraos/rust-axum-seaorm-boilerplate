@@ -49,11 +49,12 @@ pub async fn authorize(
   settings: &Settings,
   http: &openidconnect::reqwest::Client,
   callback_url: String,
+  reauthenticate: bool,
 ) -> Result<(String, Flow), ApiError> {
   let client = client(settings, http, callback_url).await?;
   let (challenge, verifier) = PkceCodeChallenge::new_random_sha256();
 
-  let (url, csrf, nonce) = client
+  let request = client
     .authorize_url(
       CoreAuthenticationFlow::AuthorizationCode,
       CsrfToken::new_random,
@@ -61,8 +62,13 @@ pub async fn authorize(
     )
     .set_pkce_challenge(challenge)
     .add_scope(Scope::new("email".to_string()))
-    .add_scope(Scope::new("profile".to_string()))
-    .url();
+    .add_scope(Scope::new("profile".to_string()));
+  let request = if reauthenticate {
+    request.add_prompt(openidconnect::core::CoreAuthPrompt::Login)
+  } else {
+    request
+  };
+  let (url, csrf, nonce) = request.url();
 
   let flow = Flow::new(
     settings.name,

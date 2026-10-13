@@ -98,7 +98,8 @@ pub async fn create(
   name: String,
 ) -> Result<UserDto, ApiError> {
   // Hash password
-  let password_hash = crate::modules::auth::password::hash(password, cfg.bcrypt_cost).await?;
+  let password_hash =
+    crate::modules::auth::service::password::hash(password, cfg.bcrypt_cost).await?;
 
   let user = entities::ActiveModel {
     id: Set(Uuid::new_v4()),

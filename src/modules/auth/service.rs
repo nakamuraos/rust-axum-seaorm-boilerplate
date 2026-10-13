@@ -1,3 +1,7 @@
+pub(crate) mod accounts;
+pub(crate) mod ownership;
+pub(crate) mod password;
+
 use anyhow::anyhow;
 use base64::{Engine, engine::general_purpose::URL_SAFE_NO_PAD};
 use chrono::Utc;
@@ -5,12 +9,11 @@ use jsonwebtoken::{EncodingKey, Header, encode};
 use rand::RngExt;
 use sea_orm::{
   ActiveModelTrait, ColumnTrait, Condition, DatabaseConnection, EntityTrait, QueryFilter,
-  QueryOrder, Set, TransactionTrait,
+  QueryOrder, QuerySelect, Set, TransactionTrait,
 };
 use sha2::{Digest, Sha256};
 use uuid::Uuid;
 
-use super::password;
 use crate::common::config::Config;
 use crate::common::errors::ApiError;
 use crate::modules::auth::dto::{
@@ -52,14 +55,7 @@ pub async fn register(
     }
   })?;
 
-  let token = generate_token(&user, cfg)?;
-  let refresh_token = issue_refresh_token(conn, cfg, user.id).await?;
-
-  Ok(AuthResponse {
-    token,
-    refresh_token,
-    user: UserDto::from(user),
-  })
+  open_session(conn, cfg, user).await
 }
 
 pub async fn login(
@@ -67,23 +63,42 @@ pub async fn login(
   cfg: &Config,
   req: LoginRequest,
 ) -> Result<AuthResponse, ApiError> {
-  // Find user by email
-  let user = UserEntities::Entity::find()
+  let verified = UserEntities::Entity::find()
     .filter(UserEntities::Column::Email.eq(req.email))
     .one(conn)
     .await?
-    .ok_or_else(|| ApiError::InvalidRequest("Invalid credentials".to_string()))?;
-
-  ensure_active(&user.status)?;
-
-  // Verify password
-  if !password::verify(req.password, user.password.clone()).await? {
-    return Err(ApiError::InvalidRequest("Invalid credentials".to_string()));
+    .ok_or_else(|| ApiError::InvalidRequest("Invalid credentials".into()))?;
+  ensure_active(&verified.status)?;
+  if !password::verify(req.password, verified.password.clone()).await? {
+    return Err(ApiError::InvalidRequest("Invalid credentials".into()));
   }
 
+  let txn = conn.begin().await?;
+  // Credential work runs before locking; session issuance uses the current account state.
+  let user = UserEntities::Entity::find_by_id(verified.id)
+    .lock_exclusive()
+    .one(&txn)
+    .await?
+    .ok_or_else(|| ApiError::Unauthorized("Account no longer exists".into()))?;
+  ensure_active(&user.status)?;
+  if user.password != verified.password {
+    return Err(ApiError::Unauthorized(
+      "Account credentials have changed".into(),
+    ));
+  }
+  let auth = open_session(&txn, cfg, user).await?;
+  txn.commit().await?;
+  Ok(auth)
+}
+
+pub(crate) async fn open_session<C: sea_orm::ConnectionTrait>(
+  conn: &C,
+  cfg: &Config,
+  user: UserEntities::Model,
+) -> Result<AuthResponse, ApiError> {
+  ensure_active(&user.status)?;
   let token = generate_token(&user, cfg)?;
   let refresh_token = issue_refresh_token(conn, cfg, user.id).await?;
-
   Ok(AuthResponse {
     token,
     refresh_token,
@@ -109,6 +124,7 @@ pub async fn refresh(
     .ok_or_else(|| ApiError::Unauthorized("Invalid refresh token".to_string()))?;
 
   let user = UserEntities::Entity::find_by_id(stored.user_id)
+    .lock_exclusive()
     .one(&txn)
     .await?
     .ok_or_else(|| ApiError::Unauthorized("Invalid refresh token".to_string()))?;
@@ -280,8 +296,9 @@ pub(crate) fn generate_token(user: &UserEntities::Model, cfg: &Config) -> Result
   let claims = Claims {
     sub: user.id.to_string(),
     exp: expiration as usize,
+    iat: Utc::now().timestamp() as usize,
+    session_version: user.session_version,
     user: user.clone().into(),
-    ..Default::default()
   };
 
   encode(
@@ -322,6 +339,9 @@ pub(crate) mod tests {
       bio: None,
       status,
       role,
+      session_version: 0,
+      merged_into: None,
+      merged_at: None,
       created_at: Utc::now(),
       updated_at: Utc::now(),
     }
@@ -355,6 +375,7 @@ pub(crate) mod tests {
   async fn security_active_password_login_succeeds() {
     let user = user(UserStatus::Active, UserRole::User);
     let db = MockDatabase::new(DbBackend::Postgres)
+      .append_query_results([[user.clone()]])
       .append_query_results([[user.clone()]])
       .append_query_results([[refresh_token(user.id)]])
       .into_connection();
@@ -519,5 +540,46 @@ pub(crate) mod tests {
       .await
       .unwrap();
     assert_eq!(successes, 1);
+  }
+  #[tokio::test]
+  async fn security_login_rechecks_account_after_password_verification() {
+    for scenario in 0..3 {
+      let verified = user(UserStatus::Active, UserRole::User);
+      let mut current = verified.clone();
+      match scenario {
+        0 => current.status = UserStatus::Merged,
+        1 => current.password = "changed-password-hash".into(),
+        _ => current.session_version += 1,
+      }
+      let db = MockDatabase::new(DbBackend::Postgres)
+        .append_query_results([[verified.clone()]])
+        .append_query_results([[current.clone()]])
+        .append_query_results([[refresh_token(current.id)]])
+        .into_connection();
+      let result = login(
+        &db,
+        &config(),
+        LoginRequest {
+          email: verified.email,
+          password: "attacker-known-password".into(),
+        },
+      )
+      .await;
+      if scenario == 2 {
+        let claims = jsonwebtoken::decode::<Claims>(
+          &result.unwrap().token,
+          &jsonwebtoken::DecodingKey::from_secret(config().jwt_secret.expose().as_bytes()),
+          &jsonwebtoken::Validation::default(),
+        )
+        .unwrap()
+        .claims;
+        assert_eq!(claims.session_version, current.session_version);
+      } else {
+        assert!(matches!(
+          result,
+          Err(ApiError::Unauthorized(_) | ApiError::Forbidden(_))
+        ));
+      }
+    }
   }
 }

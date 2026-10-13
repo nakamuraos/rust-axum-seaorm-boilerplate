@@ -8,7 +8,13 @@ use crate::modules::auth::dto::{
   TokenPairResponse,
 };
 use crate::modules::auth::service;
-use crate::modules::users::dto::UserDto;
+use uuid::Uuid;
+
+use super::dto::{
+  LinkedIdentityDto, MergeAccountsRequest, MergePreviewResponse, OwnershipProofRequest,
+  OwnershipProofResponse,
+};
+use super::service::accounts;
 
 #[utoipa::path(
   post,
@@ -107,12 +113,8 @@ pub async fn logout(
 )]
 pub async fn logout_all(
   State(state): State<AppState>,
-  Extension(user): Extension<UserDto>,
+  Extension(user_id): Extension<Uuid>,
 ) -> Result<Json<LogoutResponse>, ApiError> {
-  let user_id = user
-    .id
-    .parse()
-    .map_err(|_| ApiError::Unauthorized("Invalid user id in token".to_string()))?;
   let result = service::logout_all(&state.db.conn, user_id).await?;
   Ok(Json(result))
 }
@@ -131,12 +133,94 @@ pub async fn logout_all(
 )]
 pub async fn sessions(
   State(state): State<AppState>,
-  Extension(user): Extension<UserDto>,
+  Extension(user_id): Extension<Uuid>,
 ) -> Result<Json<Vec<SessionDto>>, ApiError> {
-  let user_id = user
-    .id
-    .parse()
-    .map_err(|_| ApiError::Unauthorized("Invalid user id in token".to_string()))?;
   let result = service::sessions(&state.db.conn, user_id).await?;
   Ok(Json(result))
+}
+
+#[utoipa::path(
+  post,
+  tag = "Auth",
+  path = "/api/v1/auth/accounts/proof",
+  operation_id = "authAccountProof",
+  security(("bearerAuth" = [])),
+  request_body = OwnershipProofRequest,
+  responses(
+    (status = 200, description = "Short-lived proof of password ownership", body = OwnershipProofResponse),
+    (status = 401, description = "Invalid credentials")
+  )
+)]
+pub async fn account_proof(
+  State(state): State<AppState>,
+  Extension(user_id): Extension<Uuid>,
+  ValidatedJson(req): ValidatedJson<OwnershipProofRequest>,
+) -> Result<Json<OwnershipProofResponse>, ApiError> {
+  Ok(Json(
+    accounts::password_proof(&state.db.conn, &state.cfg, user_id, req.password).await?,
+  ))
+}
+
+#[utoipa::path(
+  get,
+  tag = "Auth",
+  path = "/api/v1/auth/accounts/identities",
+  operation_id = "authAccountIdentities",
+  security(("bearerAuth" = [])),
+  responses(
+    (status = 200, description = "Connected provider identities", body = Vec<LinkedIdentityDto>),
+    (status = 401, description = "Unauthorized")
+  )
+)]
+pub async fn identities(
+  State(state): State<AppState>,
+  Extension(user_id): Extension<Uuid>,
+) -> Result<Json<Vec<LinkedIdentityDto>>, ApiError> {
+  Ok(Json(accounts::identities(&state.db.conn, user_id).await?))
+}
+
+#[utoipa::path(
+  post,
+  tag = "Auth",
+  path = "/api/v1/auth/accounts/merge/preview",
+  operation_id = "authAccountMergePreview",
+  security(("bearerAuth" = [])),
+  request_body = MergeAccountsRequest,
+  responses(
+    (status = 200, description = "Accounts, identities, conflicts and consequences", body = MergePreviewResponse),
+    (status = 401, description = "Invalid account proofs")
+  )
+)]
+pub async fn merge_preview(
+  State(state): State<AppState>,
+  Extension(user_id): Extension<Uuid>,
+  ValidatedJson(req): ValidatedJson<MergeAccountsRequest>,
+) -> Result<Json<MergePreviewResponse>, ApiError> {
+  Ok(Json(
+    accounts::preview(&state.db.conn, &state.cfg, user_id, &req).await?,
+  ))
+}
+
+#[utoipa::path(
+  post,
+  tag = "Auth",
+  path = "/api/v1/auth/accounts/merge",
+  operation_id = "authAccountMerge",
+  security(("bearerAuth" = [])),
+  request_body = MergeAccountsRequest,
+  responses(
+    (status = 200, description = "Merged into the authenticated target with a new session", body = AuthResponse),
+    (status = 400, description = "Confirmation required"),
+    (status = 401, description = "Invalid account proofs"),
+    (status = 403, description = "Conflicting roles")
+  )
+)]
+pub async fn merge_accounts(
+  State(state): State<AppState>,
+  Extension(user_id): Extension<Uuid>,
+  ValidatedJson(req): ValidatedJson<MergeAccountsRequest>,
+) -> Result<Json<AuthResponse>, ApiError> {
+  Ok(Json(
+    accounts::merge(&state.db.conn, &state.cfg, user_id, req).await?,
+  ))
 }
