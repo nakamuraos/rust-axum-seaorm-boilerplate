@@ -335,14 +335,42 @@ redirect URI at the provider, then send the browser to
 - Without `success_redirect_url` the callback answers with the JSON token pair.
   With it, the browser is redirected there with `#token=...&refresh_token=...`
   in the URL fragment.
-- An account is matched by the provider's stable subject id. A first login is
-  linked to the existing user with the same email, or creates one, but only if
-  the provider reports the email as verified.
+- An account is matched by the provider's stable subject id. A first login
+  creates a user only if the provider reports a verified email that is not
+  already registered. Matching email addresses never automatically link accounts.
+  Existing users must use their original sign-in method.
 - Users created this way have no usable password.
 - For a REST-only build without these flows: `cargo build --no-default-features`
   (add `--features graphql` to keep GraphQL).
 
+## Security checks
+
+Security tests live beside their implementation in `#[cfg(test)]` modules:
+
+```shell
+cargo test --locked --lib security_
+```
+
+The refresh concurrency test requires an isolated PostgreSQL database and runs
+16 simultaneous exchanges of the same token:
+
+```shell
+SECURITY_TEST_DATABASE_URL=postgres://localhost/security_test \
+  cargo test --locked --lib security_concurrent_refresh_has_one_winner -- --ignored
+```
+
+Password hashing and verification run outside the async runtime, with at most
+four bcrypt operations per process. Requests beyond that limit receive HTTP 429.
+Configure per-client request limits at the ingress for brute-force protection.
+
+Inactive and banned accounts cannot authenticate. Public registration creates
+active accounts. Each authenticated request reloads current status and role.
+
 ## Production
+
+Set a private, randomly generated `JWT_SECRET` of at least 32 bytes. Production
+startup rejects missing secrets and the supplied example values. For example,
+`openssl rand -hex 32` generates a suitable value.
 
 ```shell
 # Binary
