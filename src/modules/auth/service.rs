@@ -21,6 +21,7 @@ use crate::modules::auth::entities::{self as RefreshTokenEntities};
 use crate::modules::auth::guards::auth_guard::Claims;
 use crate::modules::users::dto::UserDto;
 use crate::modules::users::entities::{self as UserEntities};
+use crate::modules::users::enums::UserStatus;
 
 /// Number of random bytes behind a refresh token.
 const REFRESH_TOKEN_BYTES: usize = 32;
@@ -39,6 +40,7 @@ pub async fn register(
     email: sea_orm::ActiveValue::Set(req.email),
     password: sea_orm::ActiveValue::Set(password_hash),
     name: sea_orm::ActiveValue::Set(req.name),
+    status: Set(UserStatus::Active),
     ..Default::default()
   };
 
@@ -71,6 +73,8 @@ pub async fn login(
     .one(conn)
     .await?
     .ok_or_else(|| ApiError::InvalidRequest("Invalid credentials".to_string()))?;
+
+  ensure_active(&user.status)?;
 
   // Verify password
   if !password::verify(req.password, user.password.clone()).await? {
@@ -109,6 +113,8 @@ pub async fn refresh(
     .one(&txn)
     .await?
     .ok_or_else(|| ApiError::Unauthorized("Invalid refresh token".to_string()))?;
+
+  ensure_active(&user.status)?;
 
   let mut revoked: RefreshTokenEntities::ActiveModel = stored.into();
   revoked.revoked_at = Set(Some(Utc::now()));
@@ -246,6 +252,13 @@ fn hash_token(token: &str) -> String {
   digest.iter().map(|byte| format!("{:02x}", byte)).collect()
 }
 
+pub(crate) fn ensure_active(status: &UserStatus) -> Result<(), ApiError> {
+  if *status != UserStatus::Active {
+    return Err(ApiError::Forbidden("Account is not active".to_string()));
+  }
+  Ok(())
+}
+
 pub(crate) fn generate_token(user: &UserEntities::Model, cfg: &Config) -> Result<String, ApiError> {
   let secret = cfg.jwt_secret.expose();
   let expiration = chrono::Utc::now()
@@ -266,4 +279,123 @@ pub(crate) fn generate_token(user: &UserEntities::Model, cfg: &Config) -> Result
     &EncodingKey::from_secret(secret.as_bytes()),
   )
   .map_err(|e| ApiError::InternalError(anyhow!("Failed to generate token: {}", e)))
+}
+
+#[cfg(test)]
+pub(crate) mod tests {
+  use super::*;
+  use crate::common::config::tests::config;
+  use crate::modules::users::{
+    entities,
+    enums::{UserRole, UserStatus},
+  };
+  use sea_orm::{DbBackend, MockDatabase};
+  pub(crate) fn refresh_token(user_id: Uuid) -> RefreshTokenEntities::Model {
+    RefreshTokenEntities::Model {
+      id: Uuid::new_v4(),
+      user_id,
+      token_hash: hash_token("refresh-secret"),
+      expires_at: Utc::now() + chrono::Duration::days(1),
+      revoked_at: None,
+      created_at: Utc::now(),
+    }
+  }
+
+  pub(crate) fn user(status: UserStatus, role: UserRole) -> entities::Model {
+    entities::Model {
+      id: Uuid::new_v4(),
+      email: "victim@example.com".into(),
+      name: "Victim".into(),
+      password: bcrypt::hash("attacker-known-password", 4).unwrap(),
+      phone: None,
+      bio: None,
+      status,
+      role,
+      created_at: Utc::now(),
+      updated_at: Utc::now(),
+    }
+  }
+
+  #[tokio::test]
+  async fn security_password_login_rejects_banned_user() {
+    let db = MockDatabase::new(DbBackend::Postgres)
+      .append_query_results([[user(UserStatus::Banned, UserRole::User)]])
+      .append_query_results([[refresh_token(Uuid::new_v4())]])
+      .into_connection();
+    let result = login(
+      &db,
+      &config(),
+      LoginRequest {
+        email: "victim@example.com".into(),
+        password: "attacker-known-password".into(),
+      },
+    )
+    .await;
+    assert!(
+      matches!(
+        result,
+        Err(ApiError::Unauthorized(_) | ApiError::Forbidden(_))
+      ),
+      "Banned login must be rejected before issuing a session: {result:?}"
+    );
+  }
+
+  #[tokio::test]
+  async fn security_active_password_login_succeeds() {
+    let user = user(UserStatus::Active, UserRole::User);
+    let db = MockDatabase::new(DbBackend::Postgres)
+      .append_query_results([[user.clone()]])
+      .append_query_results([[refresh_token(user.id)]])
+      .into_connection();
+    let result = login(
+      &db,
+      &config(),
+      LoginRequest {
+        email: user.email,
+        password: "attacker-known-password".into(),
+      },
+    )
+    .await
+    .unwrap();
+    assert_eq!(result.user.id, user.id.to_string());
+    assert!(!result.refresh_token.is_empty());
+  }
+
+  #[tokio::test]
+  async fn security_wrong_password_is_rejected() {
+    let user = user(UserStatus::Active, UserRole::User);
+    let db = MockDatabase::new(DbBackend::Postgres)
+      .append_query_results([[user.clone()]])
+      .into_connection();
+    let result = login(
+      &db,
+      &config(),
+      LoginRequest {
+        email: user.email,
+        password: "wrong-password".into(),
+      },
+    )
+    .await;
+    assert!(matches!(result, Err(ApiError::InvalidRequest(_))));
+  }
+
+  #[tokio::test]
+  async fn security_refresh_rejects_inactive_accounts() {
+    for status in [UserStatus::Banned, UserStatus::Inactive] {
+      let user = user(status, UserRole::User);
+      let db = MockDatabase::new(DbBackend::Postgres)
+        .append_query_results([[refresh_token(user.id)]])
+        .append_query_results([[user]])
+        .into_connection();
+      let result = refresh(
+        &db,
+        &config(),
+        RefreshRequest {
+          refresh_token: "refresh-secret".into(),
+        },
+      )
+      .await;
+      assert!(matches!(result, Err(ApiError::Forbidden(_))));
+    }
+  }
 }
