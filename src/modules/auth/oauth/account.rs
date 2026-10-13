@@ -1,6 +1,4 @@
-use anyhow::anyhow;
 use base64::{Engine, engine::general_purpose::URL_SAFE_NO_PAD};
-use bcrypt::hash;
 use rand::RngExt;
 use sea_orm::{
   ActiveModelTrait, ColumnTrait, DatabaseConnection, EntityTrait, QueryFilter, Set,
@@ -13,17 +11,16 @@ use crate::common::config::Config;
 use crate::common::errors::ApiError;
 use crate::modules::auth::dto::AuthResponse;
 use crate::modules::auth::entities::identity;
-use crate::modules::auth::service::{generate_token, issue_refresh_token};
+use crate::modules::auth::password;
+use crate::modules::auth::service::{ensure_active, generate_token, issue_refresh_token};
 use crate::modules::users::dto::UserDto;
 use crate::modules::users::entities::{self as UserEntities};
 use crate::modules::users::enums::UserStatus;
 
 /// Finds or creates the user behind a provider account and opens a session.
 ///
-/// A known `(provider, subject)` always wins. Otherwise the account is linked
-/// to the user with the same email, or a new user is created; both require the
-/// provider to vouch for the email, since linking on an unverified address
-/// would let anyone take over an account by registering its email elsewhere.
+/// A known `(provider, subject)` identifies the account. New identities require
+/// a verified email that is not already attached to a local account.
 pub async fn sign_in(
   conn: &DatabaseConnection,
   cfg: &Config,
@@ -58,7 +55,12 @@ pub async fn sign_in(
         .await?;
 
       let user = match existing {
-        Some(user) => user,
+        Some(_) => {
+          return Err(ApiError::Unauthorized(
+            "An account with this email already exists. Use its existing sign-in method"
+              .to_string(),
+          ));
+        }
         None => create_user(&txn, cfg, email, profile.name.as_deref()).await?,
       };
 
@@ -76,6 +78,7 @@ pub async fn sign_in(
     }
   };
 
+  ensure_active(&user.status)?;
   let token = generate_token(&user, cfg)?;
   let refresh_token = issue_refresh_token(&txn, cfg, user.id).await?;
 
@@ -100,8 +103,7 @@ where
   // The password column is required, so the user gets a random one nobody
   // knows: password login stays impossible until a reset sets a real one.
   let random: [u8; 32] = rand::rng().random();
-  let password = hash(URL_SAFE_NO_PAD.encode(random), cfg.bcrypt_cost)
-    .map_err(|e| ApiError::InternalError(anyhow!("Failed to hash password: {}", e)))?;
+  let password = password::hash(URL_SAFE_NO_PAD.encode(random), cfg.bcrypt_cost).await?;
 
   let name = name
     .filter(|name| !name.is_empty())
@@ -120,4 +122,67 @@ where
     .insert(conn)
     .await?,
   )
+}
+
+#[cfg(test)]
+mod tests {
+  use super::*;
+  use crate::common::config::tests::config;
+  use crate::modules::auth::service::tests::{refresh_token, user};
+  use crate::modules::users::enums::UserRole;
+  use sea_orm::{DbBackend, MockDatabase};
+
+  fn profile(verified: bool) -> Profile {
+    Profile {
+      subject: "provider-subject".into(),
+      email: Some("victim@example.com".into()),
+      email_verified: verified,
+      name: None,
+    }
+  }
+
+  #[tokio::test]
+  async fn security_oauth_does_not_link_by_email() {
+    let account = user(UserStatus::Active, UserRole::User);
+    let db = MockDatabase::new(DbBackend::Postgres)
+      .append_query_results([Vec::<identity::Model>::new()])
+      .append_query_results([[account]])
+      .into_connection();
+    let result = sign_in(&db, &config(), "github", profile(true)).await;
+    assert!(matches!(result, Err(ApiError::Unauthorized(_))));
+  }
+
+  #[tokio::test]
+  async fn security_oauth_rejects_unverified_email() {
+    let db = MockDatabase::new(DbBackend::Postgres)
+      .append_query_results([Vec::<identity::Model>::new()])
+      .into_connection();
+    let result = sign_in(&db, &config(), "github", profile(false)).await;
+    assert!(matches!(result, Err(ApiError::Unauthorized(_))));
+  }
+
+  #[tokio::test]
+  async fn security_oauth_linked_identity_checks_status() {
+    for status in [UserStatus::Active, UserStatus::Inactive, UserStatus::Banned] {
+      let account = user(status.clone(), UserRole::User);
+      let linked = identity::Model {
+        id: Uuid::new_v4(),
+        user_id: account.id,
+        provider: "github".into(),
+        subject: "provider-subject".into(),
+        created_at: chrono::Utc::now(),
+      };
+      let db = MockDatabase::new(DbBackend::Postgres)
+        .append_query_results([[linked]])
+        .append_query_results([[account.clone()]])
+        .append_query_results([[refresh_token(account.id)]])
+        .into_connection();
+      let result = sign_in(&db, &config(), "github", profile(true)).await;
+      if status == UserStatus::Active {
+        assert_eq!(result.unwrap().user.id, account.id.to_string());
+      } else {
+        assert!(matches!(result, Err(ApiError::Forbidden(_))));
+      }
+    }
+  }
 }

@@ -4,6 +4,7 @@ pub mod entities;
 pub mod guards;
 #[cfg(feature = "oauth2")]
 pub mod oauth;
+pub(crate) mod password;
 pub mod service;
 
 use axum::{

@@ -11,6 +11,7 @@ pub struct Model {
   pub id: Uuid,
   pub email: String,
   pub name: String,
+  #[cfg_attr(feature = "graphql", seaography(ignore))]
   pub password: String,
   pub phone: Option<String>,
   #[sea_orm(column_type = "Text", nullable)]
