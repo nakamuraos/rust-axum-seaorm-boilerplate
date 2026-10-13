@@ -15,9 +15,24 @@ pub const COOKIE_NAME: &str = "oauth_flow";
 const COOKIE_PATH: &str = "/api/v1/auth/oauth";
 const FLOW_TTL_SECONDS: i64 = 600;
 
+#[derive(Debug, Default, Serialize, Deserialize)]
+pub enum Intent {
+  #[default]
+  Login,
+  Link {
+    proof_token: String,
+  },
+  Verify {
+    user_id: uuid::Uuid,
+    session_version: i64,
+  },
+}
+
 #[derive(Debug, Serialize, Deserialize)]
 pub struct Flow {
   pub provider: String,
+  #[serde(default)]
+  pub intent: Intent,
   /// The anti-CSRF value echoed back by the provider.
   pub state: String,
   /// The PKCE secret proving the code exchange comes from whoever started the flow.
@@ -31,6 +46,7 @@ impl Flow {
   pub fn new(provider: &str, state: String, verifier: String, nonce: String) -> Self {
     Self {
       provider: provider.to_string(),
+      intent: Intent::Login,
       state,
       verifier,
       nonce,
@@ -177,5 +193,27 @@ mod tests {
     // The default base URL is plain http, where Secure would drop the cookie.
     assert!(!set_cookie.contains("Secure"));
     assert!(clear_cookie(&cfg).contains("Max-Age=0"));
+  }
+  #[test]
+  fn test_flow_cookie_binds_link_proof_and_verification_account() {
+    let cfg = config();
+    let mut link = flow();
+    link.intent = Intent::Link {
+      proof_token: "signed-account-proof".into(),
+    };
+    let header = as_request_header(&link.to_cookie(&cfg).unwrap());
+    assert!(
+      matches!(Flow::from_cookie_header(&cfg, Some(&header)).unwrap().intent, Intent::Link { proof_token } if proof_token == "signed-account-proof")
+    );
+    let id = uuid::Uuid::new_v4();
+    let mut verify = flow();
+    verify.intent = Intent::Verify {
+      user_id: id,
+      session_version: 7,
+    };
+    let header = as_request_header(&verify.to_cookie(&cfg).unwrap());
+    assert!(
+      matches!(Flow::from_cookie_header(&cfg, Some(&header)).unwrap().intent, Intent::Verify { user_id, session_version: 7 } if user_id == id)
+    );
   }
 }

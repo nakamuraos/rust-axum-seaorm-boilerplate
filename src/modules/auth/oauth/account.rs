@@ -1,7 +1,7 @@
 use base64::{Engine, engine::general_purpose::URL_SAFE_NO_PAD};
 use rand::RngExt;
 use sea_orm::{
-  ActiveModelTrait, ColumnTrait, DatabaseConnection, EntityTrait, QueryFilter, Set,
+  ActiveModelTrait, ColumnTrait, DatabaseConnection, EntityTrait, QueryFilter, QuerySelect, Set,
   TransactionTrait,
 };
 use uuid::Uuid;
@@ -12,8 +12,8 @@ use crate::common::errors::ApiError;
 use crate::modules::auth::dto::AuthResponse;
 use crate::modules::auth::entities::identity;
 use crate::modules::auth::password;
-use crate::modules::auth::service::{ensure_active, generate_token, issue_refresh_token};
-use crate::modules::users::dto::UserDto;
+use crate::modules::auth::service::open_session;
+use crate::modules::auth::{accounts, dto::OwnershipProofResponse, ownership};
 use crate::modules::users::entities::{self as UserEntities};
 use crate::modules::users::enums::UserStatus;
 
@@ -37,6 +37,7 @@ pub async fn sign_in(
 
   let user = match linked {
     Some(identity) => UserEntities::Entity::find_by_id(identity.user_id)
+      .lock_exclusive()
       .one(&txn)
       .await?
       .ok_or_else(|| ApiError::Unauthorized("Account no longer exists".to_string()))?,
@@ -78,17 +79,83 @@ pub async fn sign_in(
     }
   };
 
-  ensure_active(&user.status)?;
-  let token = generate_token(&user, cfg)?;
-  let refresh_token = issue_refresh_token(&txn, cfg, user.id).await?;
-
+  let auth = open_session(&txn, cfg, user).await?;
   txn.commit().await?;
+  Ok(auth)
+}
 
-  Ok(AuthResponse {
-    token,
-    refresh_token,
-    user: UserDto::from(user),
-  })
+pub(crate) async fn link_identity(
+  conn: &DatabaseConnection,
+  cfg: &Config,
+  proof_token: &str,
+  provider: &str,
+  profile: Profile,
+) -> Result<AuthResponse, ApiError> {
+  let proof = ownership::verify(cfg, proof_token)?;
+  let txn = conn.begin().await?;
+  let user = accounts::locked_user(&txn, proof.user_id).await?;
+  proof.check_user(&user)?;
+  let linked = identity::Entity::find()
+    .filter(identity::Column::Provider.eq(provider))
+    .filter(identity::Column::Subject.eq(&profile.subject))
+    .one(&txn)
+    .await?;
+  match linked {
+    Some(linked) if linked.user_id != user.id => {
+      return Err(ApiError::Conflict(
+        "Identity belongs to another account. Authenticate both accounts to merge".into(),
+      ));
+    }
+    Some(_) => {}
+    None => {
+      identity::ActiveModel {
+        id: Set(Uuid::new_v4()),
+        user_id: Set(user.id),
+        provider: Set(provider.into()),
+        subject: Set(profile.subject),
+        ..Default::default()
+      }
+      .insert(&txn)
+      .await
+      .map_err(|error| match error.sql_err() {
+        Some(sea_orm::SqlErr::UniqueConstraintViolation(_)) => ApiError::Conflict(
+          "Identity is already connected. Authenticate both accounts to merge".into(),
+        ),
+        _ => ApiError::from(error),
+      })?;
+    }
+  }
+  let auth = accounts::renewed_session(&txn, cfg, user).await?;
+  txn.commit().await?;
+  Ok(auth)
+}
+
+pub(crate) async fn verify_identity(
+  conn: &DatabaseConnection,
+  cfg: &Config,
+  user_id: Uuid,
+  session_version: i64,
+  provider: &str,
+  profile: Profile,
+) -> Result<OwnershipProofResponse, ApiError> {
+  let txn = conn.begin().await?;
+  let user = accounts::locked_user(&txn, user_id).await?;
+  if user.session_version != session_version {
+    return Err(ApiError::Unauthorized("Session has been revoked".into()));
+  }
+  let linked = identity::Entity::find()
+    .filter(identity::Column::Provider.eq(provider))
+    .filter(identity::Column::Subject.eq(&profile.subject))
+    .one(&txn)
+    .await?;
+  if linked.is_none_or(|identity| identity.user_id != user.id) {
+    return Err(ApiError::Unauthorized(
+      "Provider identity does not belong to this account".into(),
+    ));
+  }
+  let proof = ownership::issue(cfg, &user)?;
+  txn.commit().await?;
+  Ok(proof)
 }
 
 async fn create_user<C>(
@@ -184,5 +251,153 @@ mod tests {
         assert!(matches!(result, Err(ApiError::Forbidden(_))));
       }
     }
+  }
+  #[tokio::test]
+  async fn test_link_rejects_identity_owned_by_another_account() {
+    let cfg = config();
+    let target = user(UserStatus::Active, UserRole::User);
+    let proof = ownership::issue(&cfg, &target).unwrap();
+    let linked = identity::Model {
+      id: Uuid::new_v4(),
+      user_id: Uuid::new_v4(),
+      provider: "github".into(),
+      subject: "provider-subject".into(),
+      created_at: chrono::Utc::now(),
+    };
+    let db = MockDatabase::new(DbBackend::Postgres)
+      .append_query_results([[target]])
+      .append_query_results([[linked]])
+      .into_connection();
+    assert!(matches!(
+      link_identity(&db, &cfg, &proof.proof_token, "github", profile(true)).await,
+      Err(ApiError::Conflict(_))
+    ));
+    assert!(!format!("{:?}", db.into_transaction_log()).contains("SET "));
+  }
+
+  #[tokio::test]
+  async fn test_identity_verification_requires_matching_owner_and_session() {
+    for scenario in 0..3 {
+      let cfg = config();
+      let target = user(UserStatus::Active, UserRole::User);
+      let linked = identity::Model {
+        id: Uuid::new_v4(),
+        user_id: if scenario == 0 {
+          Uuid::new_v4()
+        } else {
+          target.id
+        },
+        provider: "github".into(),
+        subject: "provider-subject".into(),
+        created_at: chrono::Utc::now(),
+      };
+      let db = MockDatabase::new(DbBackend::Postgres)
+        .append_query_results([[target.clone()]])
+        .append_query_results([[linked]])
+        .into_connection();
+      let result = verify_identity(
+        &db,
+        &cfg,
+        target.id,
+        if scenario == 1 { 1 } else { 0 },
+        "github",
+        profile(false),
+      )
+      .await;
+      if scenario == 2 {
+        ownership::verify(&cfg, &result.unwrap().proof_token)
+          .unwrap()
+          .check_user(&target)
+          .unwrap();
+      } else {
+        assert!(matches!(result, Err(ApiError::Unauthorized(_))));
+      }
+    }
+  }
+
+  #[tokio::test]
+  #[ignore = "requires SECURITY_TEST_DATABASE_URL pointing to an isolated PostgreSQL database"]
+  async fn security_link_consumes_proof_and_reauthenticates_identity() {
+    use crate::database::migrations::{Migrator, MigratorTrait};
+    use crate::modules::auth::dto::{RefreshRequest, RegisterRequest};
+    let db = sea_orm::Database::connect(
+      std::env::var("SECURITY_TEST_DATABASE_URL").expect("SECURITY_TEST_DATABASE_URL"),
+    )
+    .await
+    .unwrap();
+    Migrator::up(&db, None).await.unwrap();
+    let cfg = config();
+    let auth = crate::modules::auth::service::register(
+      &db,
+      &cfg,
+      RegisterRequest {
+        email: format!("link-{}@example.com", Uuid::new_v4()),
+        password: "target-password".into(),
+        name: "Link target".into(),
+      },
+    )
+    .await
+    .unwrap();
+    let id = auth.user.id.parse::<Uuid>().unwrap();
+    let proof = accounts::password_proof(&db, &cfg, id, "target-password".into())
+      .await
+      .unwrap();
+    let subject = Uuid::new_v4().to_string();
+    let profile = || Profile {
+      subject: subject.clone(),
+      email: None,
+      email_verified: false,
+      name: None,
+    };
+    let linked = link_identity(&db, &cfg, &proof.proof_token, "github", profile())
+      .await
+      .unwrap();
+    assert_eq!(linked.user.id, auth.user.id);
+    assert_eq!(accounts::identities(&db, id).await.unwrap().len(), 1);
+    assert!(
+      link_identity(&db, &cfg, &proof.proof_token, "github", profile())
+        .await
+        .is_err()
+    );
+    assert!(
+      crate::modules::auth::service::refresh(
+        &db,
+        &cfg,
+        RefreshRequest {
+          refresh_token: auth.refresh_token
+        }
+      )
+      .await
+      .is_err()
+    );
+    let user = UserEntities::Entity::find_by_id(id)
+      .one(&db)
+      .await
+      .unwrap()
+      .unwrap();
+    let proof = verify_identity(&db, &cfg, id, user.session_version, "github", profile())
+      .await
+      .unwrap();
+    ownership::verify(&cfg, &proof.proof_token)
+      .unwrap()
+      .check_user(&user)
+      .unwrap();
+    assert!(
+      verify_identity(&db, &cfg, id, user.session_version - 1, "github", profile())
+        .await
+        .is_err()
+    );
+    assert_eq!(
+      sign_in(&db, &cfg, "github", profile())
+        .await
+        .unwrap()
+        .user
+        .id,
+      auth.user.id
+    );
+    UserEntities::Entity::delete_by_id(id)
+      .exec(&db)
+      .await
+      .unwrap();
   }
 }

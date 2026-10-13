@@ -5,14 +5,17 @@
 //! code for the identity of the user, who then gets the same token pair as a
 //! password login.
 
-mod account;
+pub(crate) mod account;
 pub mod controller;
 mod flow;
 mod github;
 #[cfg(feature = "oidc")]
 mod oidc;
 
-use axum::{Router, routing::get};
+use axum::{
+  Router,
+  routing::{get, post},
+};
 use utoipa::OpenApi;
 
 use crate::app::AppState;
@@ -23,7 +26,15 @@ use crate::app::AppState;
 /// on, so `api_doc` excludes this module from the scan and merges this document
 /// in only when the feature is enabled.
 #[derive(OpenApi)]
-#[openapi(paths(controller::login, controller::callback))]
+#[openapi(
+  components(schemas(crate::modules::auth::dto::OwnershipProofResponse)),
+  paths(
+    controller::login,
+    controller::callback,
+    controller::link,
+    controller::verify
+  )
+)]
 pub struct ApiDoc;
 
 /// Which provider a request is for, named by the `{provider}` path segment.
@@ -68,8 +79,16 @@ pub struct Profile {
   pub name: Option<String>,
 }
 
-pub fn router() -> Router<AppState> {
+pub fn router(state: AppState) -> Router<AppState> {
+  let protected = Router::new()
+    .route("/v1/auth/oauth/{provider}/link", post(controller::link))
+    .route("/v1/auth/oauth/{provider}/verify", post(controller::verify))
+    .layer(axum::middleware::from_fn_with_state(
+      state,
+      crate::modules::auth::guards::auth_guard,
+    ));
   Router::new()
+    .merge(protected)
     .route("/v1/auth/oauth/{provider}/login", get(controller::login))
     .route(
       "/v1/auth/oauth/{provider}/callback",

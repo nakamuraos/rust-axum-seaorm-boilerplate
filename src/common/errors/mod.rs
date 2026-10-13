@@ -13,6 +13,8 @@ use tracing::error;
 /// The `#[from]` attribute allows for easy conversion from other error types.
 #[derive(Error, Debug)]
 pub enum ApiError {
+  #[error("Conflict: {0}")]
+  Conflict(String),
   #[error("Too many authentication requests. Try again later.")]
   TooManyRequests,
   /// Converts from an Axum built-in extractor error.
@@ -71,6 +73,7 @@ impl IntoResponse for ApiError {
       ApiError::NotFound(_) => format!("{}", self),
       ApiError::Forbidden(_) => format!("{}", self),
       ApiError::Unauthorized(_) => format!("{}", self),
+      ApiError::Conflict(_) => self.to_string(),
       ApiError::TooManyRequests => self.to_string(),
       ApiError::DatabaseError(err) => format!("{}", err),
       ApiError::InternalError(err) => format!("{}", err),
@@ -83,6 +86,7 @@ impl IntoResponse for ApiError {
       ApiError::NotFound(_) => StatusCode::NOT_FOUND,
       ApiError::Forbidden(_) => StatusCode::FORBIDDEN,
       ApiError::Unauthorized(_) => StatusCode::UNAUTHORIZED,
+      ApiError::Conflict(_) => StatusCode::CONFLICT,
       ApiError::TooManyRequests => StatusCode::TOO_MANY_REQUESTS,
       ApiError::DatabaseError(_) | ApiError::InternalError(_) => StatusCode::INTERNAL_SERVER_ERROR,
     };

@@ -10,6 +10,14 @@ use crate::modules::auth::dto::{
 use crate::modules::auth::service;
 use crate::modules::users::dto::UserDto;
 
+use super::{
+  accounts,
+  dto::{
+    LinkedIdentityDto, MergeAccountsRequest, MergePreviewResponse, OwnershipProofRequest,
+    OwnershipProofResponse,
+  },
+};
+
 #[utoipa::path(
   post,
   tag = "Auth",
@@ -139,4 +147,99 @@ pub async fn sessions(
     .map_err(|_| ApiError::Unauthorized("Invalid user id in token".to_string()))?;
   let result = service::sessions(&state.db.conn, user_id).await?;
   Ok(Json(result))
+}
+
+fn account_id(user: &UserDto) -> Result<uuid::Uuid, ApiError> {
+  user
+    .id
+    .parse()
+    .map_err(|_| ApiError::Unauthorized("Invalid account ID".into()))
+}
+
+#[utoipa::path(
+  post,
+  tag = "Auth",
+  path = "/api/v1/auth/accounts/proof",
+  operation_id = "authAccountProof",
+  security(("bearerAuth" = [])),
+  request_body = OwnershipProofRequest,
+  responses(
+    (status = 200, description = "Short-lived proof of password ownership", body = OwnershipProofResponse),
+    (status = 401, description = "Invalid credentials")
+  )
+)]
+pub async fn account_proof(
+  State(state): State<AppState>,
+  Extension(user): Extension<UserDto>,
+  ValidatedJson(req): ValidatedJson<OwnershipProofRequest>,
+) -> Result<Json<OwnershipProofResponse>, ApiError> {
+  Ok(Json(
+    accounts::password_proof(&state.db.conn, &state.cfg, account_id(&user)?, req.password).await?,
+  ))
+}
+
+#[utoipa::path(
+  get,
+  tag = "Auth",
+  path = "/api/v1/auth/accounts/identities",
+  operation_id = "authAccountIdentities",
+  security(("bearerAuth" = [])),
+  responses(
+    (status = 200, description = "Connected provider identities", body = Vec<LinkedIdentityDto>),
+    (status = 401, description = "Unauthorized")
+  )
+)]
+pub async fn identities(
+  State(state): State<AppState>,
+  Extension(user): Extension<UserDto>,
+) -> Result<Json<Vec<LinkedIdentityDto>>, ApiError> {
+  Ok(Json(
+    accounts::identities(&state.db.conn, account_id(&user)?).await?,
+  ))
+}
+
+#[utoipa::path(
+  post,
+  tag = "Auth",
+  path = "/api/v1/auth/accounts/merge/preview",
+  operation_id = "authAccountMergePreview",
+  security(("bearerAuth" = [])),
+  request_body = MergeAccountsRequest,
+  responses(
+    (status = 200, description = "Accounts, identities, conflicts and consequences", body = MergePreviewResponse),
+    (status = 401, description = "Invalid account proofs")
+  )
+)]
+pub async fn merge_preview(
+  State(state): State<AppState>,
+  Extension(user): Extension<UserDto>,
+  ValidatedJson(req): ValidatedJson<MergeAccountsRequest>,
+) -> Result<Json<MergePreviewResponse>, ApiError> {
+  Ok(Json(
+    accounts::preview(&state.db.conn, &state.cfg, account_id(&user)?, &req).await?,
+  ))
+}
+
+#[utoipa::path(
+  post,
+  tag = "Auth",
+  path = "/api/v1/auth/accounts/merge",
+  operation_id = "authAccountMerge",
+  security(("bearerAuth" = [])),
+  request_body = MergeAccountsRequest,
+  responses(
+    (status = 200, description = "Merged into the authenticated target with a new session", body = AuthResponse),
+    (status = 400, description = "Confirmation required"),
+    (status = 401, description = "Invalid account proofs"),
+    (status = 403, description = "Conflicting roles")
+  )
+)]
+pub async fn merge_accounts(
+  State(state): State<AppState>,
+  Extension(user): Extension<UserDto>,
+  ValidatedJson(req): ValidatedJson<MergeAccountsRequest>,
+) -> Result<Json<AuthResponse>, ApiError> {
+  Ok(Json(
+    accounts::merge(&state.db.conn, &state.cfg, account_id(&user)?, req).await?,
+  ))
 }
