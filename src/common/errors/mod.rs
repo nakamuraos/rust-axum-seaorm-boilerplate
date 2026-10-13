@@ -13,6 +13,8 @@ use tracing::error;
 /// The `#[from]` attribute allows for easy conversion from other error types.
 #[derive(Error, Debug)]
 pub enum ApiError {
+  #[error("Too many authentication requests. Try again later.")]
+  TooManyRequests,
   /// Converts from an Axum built-in extractor error.
   #[error("Invalid payload.")]
   InvalidJsonBody(#[from] JsonRejection),
@@ -69,6 +71,7 @@ impl IntoResponse for ApiError {
       ApiError::NotFound(_) => format!("{}", self),
       ApiError::Forbidden(_) => format!("{}", self),
       ApiError::Unauthorized(_) => format!("{}", self),
+      ApiError::TooManyRequests => self.to_string(),
       ApiError::DatabaseError(err) => format!("{}", err),
       ApiError::InternalError(err) => format!("{}", err),
     };
@@ -80,6 +83,7 @@ impl IntoResponse for ApiError {
       ApiError::NotFound(_) => StatusCode::NOT_FOUND,
       ApiError::Forbidden(_) => StatusCode::FORBIDDEN,
       ApiError::Unauthorized(_) => StatusCode::UNAUTHORIZED,
+      ApiError::TooManyRequests => StatusCode::TOO_MANY_REQUESTS,
       ApiError::DatabaseError(_) | ApiError::InternalError(_) => StatusCode::INTERNAL_SERVER_ERROR,
     };
 
@@ -158,5 +162,13 @@ mod tests {
     let error_resp: ApiErrorResp = serde_json::from_str(json).unwrap();
     assert_eq!(error_resp.status, 404);
     assert_eq!(error_resp.message, "Not Found");
+  }
+
+  #[test]
+  fn security_overload_returns_429() {
+    assert_eq!(
+      ApiError::TooManyRequests.into_response().status(),
+      StatusCode::TOO_MANY_REQUESTS
+    );
   }
 }

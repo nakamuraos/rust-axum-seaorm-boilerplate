@@ -1,4 +1,3 @@
-use bcrypt::hash;
 use sea_orm::{
   ActiveModelTrait, DatabaseConnection, EntityTrait, ItemsAndPagesNumber, PaginatorTrait,
   QueryOrder, Set,
@@ -99,8 +98,7 @@ pub async fn create(
   name: String,
 ) -> Result<UserDto, ApiError> {
   // Hash password
-  let password_hash = hash(password.as_bytes(), cfg.bcrypt_cost)
-    .map_err(|e| ApiError::InternalError(anyhow::anyhow!("Failed to hash password: {}", e)))?;
+  let password_hash = crate::modules::auth::password::hash(password, cfg.bcrypt_cost).await?;
 
   let user = entities::ActiveModel {
     id: Set(Uuid::new_v4()),

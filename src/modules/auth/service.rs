@@ -1,6 +1,5 @@
 use anyhow::anyhow;
 use base64::{Engine, engine::general_purpose::URL_SAFE_NO_PAD};
-use bcrypt::{hash, verify};
 use chrono::Utc;
 use jsonwebtoken::{EncodingKey, Header, encode};
 use rand::RngExt;
@@ -11,6 +10,7 @@ use sea_orm::{
 use sha2::{Digest, Sha256};
 use uuid::Uuid;
 
+use super::password;
 use crate::common::config::Config;
 use crate::common::errors::ApiError;
 use crate::modules::auth::dto::{
@@ -31,8 +31,7 @@ pub async fn register(
   req: RegisterRequest,
 ) -> Result<AuthResponse, ApiError> {
   // Hash password
-  let password_hash = hash(req.password.as_bytes(), cfg.bcrypt_cost)
-    .map_err(|e| ApiError::InternalError(anyhow!("Failed to hash password: {}", e)))?;
+  let password_hash = password::hash(req.password, cfg.bcrypt_cost).await?;
 
   // Create user
   let user = UserEntities::ActiveModel {
@@ -74,9 +73,7 @@ pub async fn login(
     .ok_or_else(|| ApiError::InvalidRequest("Invalid credentials".to_string()))?;
 
   // Verify password
-  if !verify(req.password, &user.password)
-    .map_err(|e| ApiError::InternalError(anyhow!("Failed to verify password: {}", e)))?
-  {
+  if !password::verify(req.password, user.password.clone()).await? {
     return Err(ApiError::InvalidRequest("Invalid credentials".to_string()));
   }
 

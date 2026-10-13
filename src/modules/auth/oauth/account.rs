@@ -1,6 +1,4 @@
-use anyhow::anyhow;
 use base64::{Engine, engine::general_purpose::URL_SAFE_NO_PAD};
-use bcrypt::hash;
 use rand::RngExt;
 use sea_orm::{
   ActiveModelTrait, ColumnTrait, DatabaseConnection, EntityTrait, QueryFilter, Set,
@@ -13,6 +11,7 @@ use crate::common::config::Config;
 use crate::common::errors::ApiError;
 use crate::modules::auth::dto::AuthResponse;
 use crate::modules::auth::entities::identity;
+use crate::modules::auth::password;
 use crate::modules::auth::service::{generate_token, issue_refresh_token};
 use crate::modules::users::dto::UserDto;
 use crate::modules::users::entities::{self as UserEntities};
@@ -100,8 +99,7 @@ where
   // The password column is required, so the user gets a random one nobody
   // knows: password login stays impossible until a reset sets a real one.
   let random: [u8; 32] = rand::rng().random();
-  let password = hash(URL_SAFE_NO_PAD.encode(random), cfg.bcrypt_cost)
-    .map_err(|e| ApiError::InternalError(anyhow!("Failed to hash password: {}", e)))?;
+  let password = password::hash(URL_SAFE_NO_PAD.encode(random), cfg.bcrypt_cost).await?;
 
   let name = name
     .filter(|name| !name.is_empty())
