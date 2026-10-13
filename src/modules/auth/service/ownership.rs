@@ -3,8 +3,8 @@ use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 use uuid::Uuid;
 
-use super::{dto::OwnershipProofResponse, service::ensure_active};
 use crate::common::{config::Config, errors::ApiError};
+use crate::modules::auth::{dto::OwnershipProofResponse, service::ensure_active};
 use crate::modules::users::entities;
 
 pub(crate) const PROOF_TTL_SECONDS: i64 = 300;

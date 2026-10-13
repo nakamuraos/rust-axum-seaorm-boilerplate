@@ -8,15 +8,13 @@ use crate::modules::auth::dto::{
   TokenPairResponse,
 };
 use crate::modules::auth::service;
-use crate::modules::users::dto::UserDto;
+use uuid::Uuid;
 
-use super::{
-  accounts,
-  dto::{
-    LinkedIdentityDto, MergeAccountsRequest, MergePreviewResponse, OwnershipProofRequest,
-    OwnershipProofResponse,
-  },
+use super::dto::{
+  LinkedIdentityDto, MergeAccountsRequest, MergePreviewResponse, OwnershipProofRequest,
+  OwnershipProofResponse,
 };
+use super::service::accounts;
 
 #[utoipa::path(
   post,
@@ -115,12 +113,8 @@ pub async fn logout(
 )]
 pub async fn logout_all(
   State(state): State<AppState>,
-  Extension(user): Extension<UserDto>,
+  Extension(user_id): Extension<Uuid>,
 ) -> Result<Json<LogoutResponse>, ApiError> {
-  let user_id = user
-    .id
-    .parse()
-    .map_err(|_| ApiError::Unauthorized("Invalid user id in token".to_string()))?;
   let result = service::logout_all(&state.db.conn, user_id).await?;
   Ok(Json(result))
 }
@@ -139,21 +133,10 @@ pub async fn logout_all(
 )]
 pub async fn sessions(
   State(state): State<AppState>,
-  Extension(user): Extension<UserDto>,
+  Extension(user_id): Extension<Uuid>,
 ) -> Result<Json<Vec<SessionDto>>, ApiError> {
-  let user_id = user
-    .id
-    .parse()
-    .map_err(|_| ApiError::Unauthorized("Invalid user id in token".to_string()))?;
   let result = service::sessions(&state.db.conn, user_id).await?;
   Ok(Json(result))
-}
-
-fn account_id(user: &UserDto) -> Result<uuid::Uuid, ApiError> {
-  user
-    .id
-    .parse()
-    .map_err(|_| ApiError::Unauthorized("Invalid account ID".into()))
 }
 
 #[utoipa::path(
@@ -170,11 +153,11 @@ fn account_id(user: &UserDto) -> Result<uuid::Uuid, ApiError> {
 )]
 pub async fn account_proof(
   State(state): State<AppState>,
-  Extension(user): Extension<UserDto>,
+  Extension(user_id): Extension<Uuid>,
   ValidatedJson(req): ValidatedJson<OwnershipProofRequest>,
 ) -> Result<Json<OwnershipProofResponse>, ApiError> {
   Ok(Json(
-    accounts::password_proof(&state.db.conn, &state.cfg, account_id(&user)?, req.password).await?,
+    accounts::password_proof(&state.db.conn, &state.cfg, user_id, req.password).await?,
   ))
 }
 
@@ -191,11 +174,9 @@ pub async fn account_proof(
 )]
 pub async fn identities(
   State(state): State<AppState>,
-  Extension(user): Extension<UserDto>,
+  Extension(user_id): Extension<Uuid>,
 ) -> Result<Json<Vec<LinkedIdentityDto>>, ApiError> {
-  Ok(Json(
-    accounts::identities(&state.db.conn, account_id(&user)?).await?,
-  ))
+  Ok(Json(accounts::identities(&state.db.conn, user_id).await?))
 }
 
 #[utoipa::path(
@@ -212,11 +193,11 @@ pub async fn identities(
 )]
 pub async fn merge_preview(
   State(state): State<AppState>,
-  Extension(user): Extension<UserDto>,
+  Extension(user_id): Extension<Uuid>,
   ValidatedJson(req): ValidatedJson<MergeAccountsRequest>,
 ) -> Result<Json<MergePreviewResponse>, ApiError> {
   Ok(Json(
-    accounts::preview(&state.db.conn, &state.cfg, account_id(&user)?, &req).await?,
+    accounts::preview(&state.db.conn, &state.cfg, user_id, &req).await?,
   ))
 }
 
@@ -236,10 +217,10 @@ pub async fn merge_preview(
 )]
 pub async fn merge_accounts(
   State(state): State<AppState>,
-  Extension(user): Extension<UserDto>,
+  Extension(user_id): Extension<Uuid>,
   ValidatedJson(req): ValidatedJson<MergeAccountsRequest>,
 ) -> Result<Json<AuthResponse>, ApiError> {
   Ok(Json(
-    accounts::merge(&state.db.conn, &state.cfg, account_id(&user)?, req).await?,
+    accounts::merge(&state.db.conn, &state.cfg, user_id, req).await?,
   ))
 }

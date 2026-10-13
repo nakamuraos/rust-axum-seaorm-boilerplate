@@ -70,6 +70,7 @@ pub async fn auth_guard(
   }
 
   let mut req = req;
+  req.extensions_mut().insert(user_id);
   req.extensions_mut().insert(UserDto::from(user));
 
   Ok(next.run(req).await)

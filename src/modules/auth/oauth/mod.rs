@@ -7,10 +7,12 @@
 
 pub(crate) mod account;
 pub mod controller;
+mod dto;
 mod flow;
 mod github;
 #[cfg(feature = "oidc")]
 mod oidc;
+mod service;
 
 use axum::{
   Router,

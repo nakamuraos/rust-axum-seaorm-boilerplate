@@ -1,12 +1,9 @@
-pub(crate) mod accounts;
 pub mod controller;
 pub mod dto;
 pub mod entities;
 pub mod guards;
 #[cfg(feature = "oauth2")]
 pub mod oauth;
-pub(crate) mod ownership;
-pub(crate) mod password;
 pub mod service;
 
 use axum::{

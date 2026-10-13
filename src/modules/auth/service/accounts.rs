@@ -5,15 +5,15 @@ use sea_orm::{
 };
 use uuid::Uuid;
 
-use super::{
+use crate::common::{config::Config, errors::ApiError};
+use crate::modules::auth::{
   dto::{
     AuthResponse, LinkedIdentityDto, MergeAccountsRequest, MergePreviewResponse,
     OwnershipProofResponse,
   },
   entities::{self as tokens, identity},
-  ownership, password, service,
+  service::{self, ownership, password},
 };
-use crate::common::{config::Config, errors::ApiError};
 use crate::modules::users::{entities as users, enums::UserStatus};
 
 pub(crate) async fn password_proof(

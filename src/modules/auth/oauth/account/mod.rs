@@ -11,9 +11,12 @@ use crate::common::config::Config;
 use crate::common::errors::ApiError;
 use crate::modules::auth::dto::AuthResponse;
 use crate::modules::auth::entities::identity;
-use crate::modules::auth::password;
 use crate::modules::auth::service::open_session;
-use crate::modules::auth::{accounts, dto::OwnershipProofResponse, ownership};
+use crate::modules::auth::service::password;
+use crate::modules::auth::{
+  dto::OwnershipProofResponse,
+  service::{accounts, ownership},
+};
 use crate::modules::users::entities::{self as UserEntities};
 use crate::modules::users::enums::UserStatus;
 

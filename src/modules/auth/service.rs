@@ -1,3 +1,7 @@
+pub(crate) mod accounts;
+pub(crate) mod ownership;
+pub(crate) mod password;
+
 use anyhow::anyhow;
 use base64::{Engine, engine::general_purpose::URL_SAFE_NO_PAD};
 use chrono::Utc;
@@ -10,7 +14,6 @@ use sea_orm::{
 use sha2::{Digest, Sha256};
 use uuid::Uuid;
 
-use super::password;
 use crate::common::config::Config;
 use crate::common::errors::ApiError;
 use crate::modules::auth::dto::{
