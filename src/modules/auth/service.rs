@@ -93,8 +93,7 @@ pub async fn login(
 
 /// Exchanges a refresh token for a new pair, revoking the presented one.
 ///
-/// Rotation happens in a transaction with the revocation of the old token, so a
-/// token can never be spent twice.
+/// A conditional revocation and the replacement token commit together.
 pub async fn refresh(
   conn: &DatabaseConnection,
   cfg: &Config,
@@ -116,9 +115,21 @@ pub async fn refresh(
 
   ensure_active(&user.status)?;
 
-  let mut revoked: RefreshTokenEntities::ActiveModel = stored.into();
-  revoked.revoked_at = Set(Some(Utc::now()));
-  revoked.update(&txn).await?;
+  // The conditional write lets exactly one transaction consume the token.
+  let now = Utc::now();
+  let revoked = RefreshTokenEntities::Entity::update_many()
+    .col_expr(
+      RefreshTokenEntities::Column::RevokedAt,
+      sea_orm::sea_query::Expr::value(now),
+    )
+    .filter(RefreshTokenEntities::Column::Id.eq(stored.id))
+    .filter(RefreshTokenEntities::Column::RevokedAt.is_null())
+    .filter(RefreshTokenEntities::Column::ExpiresAt.gt(now))
+    .exec(&txn)
+    .await?;
+  if revoked.rows_affected != 1 {
+    return Err(ApiError::Unauthorized("Invalid refresh token".to_string()));
+  }
 
   let token = generate_token(&user, cfg)?;
   let refresh_token = issue_refresh_token(&txn, cfg, user.id).await?;
@@ -397,5 +408,116 @@ pub(crate) mod tests {
       .await;
       assert!(matches!(result, Err(ApiError::Forbidden(_))));
     }
+  }
+
+  #[tokio::test]
+  async fn security_refresh_rejects_expired_and_revoked_tokens() {
+    for expired in [true, false] {
+      let mut stored = refresh_token(Uuid::new_v4());
+      if expired {
+        stored.expires_at = Utc::now() - chrono::Duration::seconds(1);
+      } else {
+        stored.revoked_at = Some(Utc::now());
+      }
+      let db = MockDatabase::new(DbBackend::Postgres)
+        .append_query_results([[stored]])
+        .into_connection();
+      let result = refresh(
+        &db,
+        &config(),
+        RefreshRequest {
+          refresh_token: "refresh-secret".into(),
+        },
+      )
+      .await;
+      assert!(matches!(result, Err(ApiError::Unauthorized(_))));
+    }
+  }
+
+  #[tokio::test]
+  async fn security_refresh_requires_successful_consumption() {
+    for rows_affected in [0, 1] {
+      let user = user(UserStatus::Active, UserRole::User);
+      let db = MockDatabase::new(DbBackend::Postgres)
+        .append_query_results([[refresh_token(user.id)]])
+        .append_query_results([[user.clone()]])
+        .append_exec_results([sea_orm::MockExecResult {
+          last_insert_id: 0,
+          rows_affected,
+        }])
+        .append_query_results([[refresh_token(user.id)]])
+        .into_connection();
+      let result = refresh(
+        &db,
+        &config(),
+        RefreshRequest {
+          refresh_token: "refresh-secret".into(),
+        },
+      )
+      .await;
+      if rows_affected == 0 {
+        assert!(matches!(result, Err(ApiError::Unauthorized(_))));
+      } else {
+        let pair = result.unwrap();
+        assert_ne!(pair.refresh_token, "refresh-secret");
+        assert!(!pair.token.is_empty());
+      }
+    }
+  }
+
+  #[tokio::test]
+  #[ignore = "Requires SECURITY_TEST_DATABASE_URL pointing to an isolated PostgreSQL database"]
+  async fn security_concurrent_refresh_has_one_winner() {
+    use sea_orm_migration::MigratorTrait;
+    let url = std::env::var("SECURITY_TEST_DATABASE_URL")
+      .expect("An isolated PostgreSQL database is required");
+    let db = sea_orm::Database::connect(url).await.unwrap();
+    crate::database::migrations::Migrator::up(&db, None)
+      .await
+      .unwrap();
+    let cfg = config();
+    let registered = register(
+      &db,
+      &cfg,
+      RegisterRequest {
+        email: format!("{}@example.com", Uuid::new_v4()),
+        name: "Concurrent refresh user".into(),
+        password: "test-password".into(),
+      },
+    )
+    .await
+    .unwrap();
+    assert_eq!(registered.user.status, "Active");
+    let user_id = Uuid::parse_str(&registered.user.id).unwrap();
+    let secret = registered.refresh_token;
+    let barrier = std::sync::Arc::new(tokio::sync::Barrier::new(16));
+    let mut tasks = tokio::task::JoinSet::new();
+    for _ in 0..16 {
+      let (db, cfg, barrier, secret) = (db.clone(), cfg.clone(), barrier.clone(), secret.clone());
+      tasks.spawn(async move {
+        barrier.wait().await;
+        refresh(
+          &db,
+          &cfg,
+          RefreshRequest {
+            refresh_token: secret,
+          },
+        )
+        .await
+      });
+    }
+    let mut successes = 0;
+    while let Some(result) = tasks.join_next().await {
+      match result.unwrap() {
+        Ok(_) => successes += 1,
+        Err(ApiError::Unauthorized(_)) => {}
+        Err(error) => panic!("Unexpected refresh failure: {error}"),
+      }
+    }
+    UserEntities::Entity::delete_by_id(user_id)
+      .exec(&db)
+      .await
+      .unwrap();
+    assert_eq!(successes, 1);
   }
 }
