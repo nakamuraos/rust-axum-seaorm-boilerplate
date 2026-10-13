@@ -343,6 +343,11 @@ redirect URI at the provider, then send the browser to
 - For a REST-only build without these flows: `cargo build --no-default-features`
   (add `--features graphql` to keep GraphQL).
 
+## Account linking and merging
+
+See [Account linking and merging](docs/account-linking-and-merging.md) for the
+API endpoints, ownership verification and merge workflow.
+
 ## Security checks
 
 Security tests live beside their implementation in `#[cfg(test)]` modules:
@@ -351,19 +356,19 @@ Security tests live beside their implementation in `#[cfg(test)]` modules:
 cargo test --locked --lib security_
 ```
 
-The refresh concurrency test requires an isolated PostgreSQL database and runs
-16 simultaneous exchanges of the same token:
+Database tests require an isolated PostgreSQL database. They cover refresh
+concurrency, linking, merge rollback, concurrent merges and session revocation:
 
 ```shell
 SECURITY_TEST_DATABASE_URL=postgres://localhost/security_test \
-  cargo test --locked --lib security_concurrent_refresh_has_one_winner -- --ignored
+  cargo test --locked --lib security_ -- --ignored --test-threads=1
 ```
 
 Password hashing and verification run outside the async runtime, with at most
 four bcrypt operations per process. Requests beyond that limit receive HTTP 429.
 Configure per-client request limits at the ingress for brute-force protection.
 
-Inactive and banned accounts cannot authenticate. Public registration creates
+Inactive, banned and merged accounts cannot authenticate. Public registration creates
 active accounts. Each authenticated request reloads current status and role.
 
 ## Production
