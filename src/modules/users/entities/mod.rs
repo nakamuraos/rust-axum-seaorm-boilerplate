@@ -20,6 +20,11 @@ pub struct Model {
   pub status: UserStatus,
   #[sea_orm(default_value = "User")]
   pub role: UserRole,
+  #[sea_orm(default_value = 0)]
+  #[cfg_attr(feature = "graphql", seaography(ignore))]
+  pub session_version: i64,
+  pub merged_into: Option<Uuid>,
+  pub merged_at: Option<DateTime<Utc>>,
   #[sea_orm(
     column_type = "TimestampWithTimeZone",
     default_expr = "Expr::current_timestamp()"
@@ -44,6 +49,9 @@ pub struct UserProfile {
   pub bio: Option<String>,
   pub status: UserStatus,
   pub role: UserRole,
+  pub session_version: i64,
+  pub merged_into: Option<Uuid>,
+  pub merged_at: Option<DateTime<Utc>>,
   pub created_at: DateTime<Utc>,
   pub updated_at: DateTime<Utc>,
 }
@@ -57,6 +65,7 @@ impl ActiveModelBehavior for ActiveModel {
       id: Set(Uuid::new_v4()),
       status: Set(UserStatus::Inactive),
       role: Set(UserRole::User),
+      session_version: Set(0),
       ..ActiveModelTrait::default()
     }
   }

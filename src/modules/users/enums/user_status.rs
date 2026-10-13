@@ -10,6 +10,8 @@ pub enum UserStatus {
   Inactive,
   #[sea_orm(string_value = "Banned")]
   Banned,
+  #[sea_orm(string_value = "Merged")]
+  Merged,
 }
 
 impl Default for UserStatus {

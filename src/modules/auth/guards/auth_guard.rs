@@ -18,6 +18,8 @@ pub struct Claims {
   pub sub: String,
   pub exp: usize,
   pub iat: usize,
+  #[serde(default)]
+  pub session_version: i64,
   pub user: UserDto,
 }
 
@@ -61,6 +63,11 @@ pub async fn auth_guard(
     .await?
     .ok_or_else(|| ApiError::Unauthorized("Account no longer exists".to_string()))?;
   ensure_active(&user.status)?;
+  if user.session_version != token_data.claims.session_version {
+    return Err(ApiError::Unauthorized(
+      "Session has been revoked".to_string(),
+    ));
+  }
 
   let mut req = req;
   req.extensions_mut().insert(UserDto::from(user));
@@ -98,6 +105,7 @@ mod tests {
       sub: "user-123".to_string(),
       exp: 1234567890,
       iat: 1234567800,
+      session_version: 0,
       user: UserDto::default(),
     };
 
@@ -175,5 +183,21 @@ mod tests {
       StatusCode::FORBIDDEN
     );
     assert_eq!(admin_response(None, claims).await, StatusCode::UNAUTHORIZED);
+  }
+  #[tokio::test]
+  async fn security_access_rejects_revoked_session_and_merged_account() {
+    let claims = user(UserStatus::Active, UserRole::Admin);
+    let mut current = claims.clone();
+    current.session_version += 1;
+    assert_eq!(
+      admin_response(Some(current), claims.clone()).await,
+      StatusCode::UNAUTHORIZED
+    );
+    let mut current = claims.clone();
+    current.status = UserStatus::Merged;
+    assert_eq!(
+      admin_response(Some(current), claims).await,
+      StatusCode::FORBIDDEN
+    );
   }
 }
