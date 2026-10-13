@@ -20,7 +20,7 @@ use oauth::{OAuthConfig, OAuthProvider};
 
 pub type Config = Arc<Configuration>;
 
-#[derive(Deserialize, Debug)]
+#[derive(Deserialize)]
 pub struct Configuration {
   /// The environment in which to run the application.
   pub env: Environment,
@@ -185,6 +185,18 @@ impl Configuration {
       "a-string-secret-at-least-256-bits-long".to_string(),
     ));
 
+    if matches!(env, Environment::Production) {
+      assert!(
+        jwt_secret.expose().len() >= 32
+          && !matches!(
+            jwt_secret.expose(),
+            "a-string-secret-at-least-256-bits-long"
+              | "change-me-to-a-secure-random-string-at-least-256-bits"
+          ),
+        "Production requires a private JWT secret of at least 32 bytes"
+      );
+    }
+
     let jwt_expiration_days = resolve(
       &file,
       "jwt.expiration_days",
@@ -275,6 +287,20 @@ impl Configuration {
   /// This method is used in tests to override the database DSN.
   pub fn set_dsn(&mut self, db_dsn: String) {
     self.db_dsn = db_dsn
+  }
+}
+
+impl fmt::Debug for Configuration {
+  fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+    f.debug_struct("Configuration")
+      .field("env", &self.env)
+      .field("listen_address", &self.listen_address)
+      .field("swagger_endpoint", &self.swagger_endpoint)
+      .field("graphql_endpoint", &self.graphql_endpoint)
+      .field("db_pool_max_size", &self.db_pool_max_size)
+      .field("db_run_migrations", &self.db_run_migrations)
+      .field("db_run_seeds", &self.db_run_seeds)
+      .finish_non_exhaustive()
   }
 }
 
@@ -406,4 +432,115 @@ where
   raw
     .parse()
     .unwrap_or_else(|e| panic!("Unable to parse the value of {}: {}", path, e))
+}
+
+#[cfg(test)]
+pub(crate) mod tests {
+  use super::*;
+  pub(crate) fn config() -> Config {
+    Arc::new(Configuration {
+      env: Environment::Production,
+      listen_address: "127.0.0.1:8080".parse().unwrap(),
+      app_port: 8080,
+      swagger_endpoint: "/docs".into(),
+      swagger_basic_auth: "docs:private-docs-password".into(),
+      graphql_endpoint: "/graphql".into(),
+      graphql_basic_auth: "graphql:private-graphql-password".into(),
+      db_dsn: "postgres://user:private-db-password@localhost/test".into(),
+      db_pool_max_size: 1,
+      db_timeout: 5,
+      db_run_migrations: false,
+      db_run_seeds: false,
+      jwt_secret: Secret("unit-test-signing-key-with-at-least-32-bytes".into()),
+      jwt_expiration_days: 7,
+      jwt_refresh_expiration_days: 30,
+      token_retention_days: 7,
+      workers_interval_hours: 24,
+      bcrypt_cost: 4,
+      oauth: OAuthConfig::default(),
+    })
+  }
+
+  #[test]
+  fn security_config_debug_redacts_credentials() {
+    let debug = format!("{:?}", config());
+    for secret in [
+      "private-db-password",
+      "private-docs-password",
+      "private-graphql-password",
+      "unit-test-signing-key",
+    ] {
+      assert!(
+        !debug.contains(secret),
+        "Configuration Debug exposes {secret}"
+      );
+    }
+  }
+
+  #[test]
+  fn security_production_requires_explicit_jwt_secret() {
+    const CHILD: &str = "SECURITY_CONFIG_TEST_CHILD";
+    if std::env::var_os(CHILD).is_some() {
+      use crate::common::config::args::Args;
+      use clap::Parser;
+
+      const PRIVATE: &str = "private-test-key-with-at-least-32-bytes";
+      for secret in [
+        None,
+        Some("short"),
+        Some("a-string-secret-at-least-256-bits-long"),
+        Some("change-me-to-a-secure-random-string-at-least-256-bits"),
+        Some(PRIVATE),
+      ] {
+        let mut args = vec![
+          "server",
+          "--config",
+          "/dev/null",
+          "--env",
+          "production",
+          "--database-url",
+          "postgres://localhost/test",
+        ];
+        if let Some(secret) = secret {
+          args.extend(["--jwt-secret", secret]);
+        }
+        let result = std::panic::catch_unwind(|| Configuration::from_args(Args::parse_from(args)));
+        if secret == Some(PRIVATE) {
+          assert!(
+            result.is_ok(),
+            "Production rejects an explicit private JWT secret"
+          );
+        } else {
+          let panic = result.expect_err("Production accepts a missing, short or public JWT secret");
+          let message = panic
+            .downcast_ref::<String>()
+            .map(String::as_str)
+            .or_else(|| panic.downcast_ref::<&str>().copied())
+            .unwrap_or("");
+          assert!(
+            message.contains("Production requires a private JWT secret"),
+            "Unexpected configuration failure: {message}"
+          );
+        }
+      }
+      return;
+    }
+
+    // A subprocess isolates configuration environment variables from parallel tests.
+    let output = std::process::Command::new(std::env::current_exe().unwrap())
+      .args([
+        "--exact",
+        "common::config::tests::security_production_requires_explicit_jwt_secret",
+        "--nocapture",
+      ])
+      .env(CHILD, "1")
+      .env_remove("JWT_SECRET")
+      .output()
+      .unwrap();
+    assert!(
+      output.status.success(),
+      "{}",
+      String::from_utf8_lossy(&output.stdout)
+    );
+  }
 }

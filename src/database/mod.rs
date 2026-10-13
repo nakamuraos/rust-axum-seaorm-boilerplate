@@ -33,7 +33,6 @@ impl Db {
       // Set min connections to 1
       .min_connections(1);
 
-    info!("Database connection options: {:?}", opt);
     info!("Connecting to database...");
     let conn = Database::connect(opt).await?;
     Ok(Self { conn })
