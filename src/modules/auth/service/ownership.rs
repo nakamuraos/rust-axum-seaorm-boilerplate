@@ -41,12 +41,9 @@ pub(crate) fn issue(
     session_version: user.session_version,
     exp: (chrono::Utc::now().timestamp() + PROOF_TTL_SECONDS) as usize,
   };
-  let proof_token = encode(
-    &Header::default(),
-    &proof,
-    &EncodingKey::from_secret(&signing_key(cfg)),
-  )
-  .map_err(|e| ApiError::InternalError(e.into()))?;
+  let proof_token = EncodingKey::from_secret(&signing_key(cfg))
+    .and_then(|key| encode(&Header::default(), &proof, &key))
+    .map_err(|e| ApiError::InternalError(e.into()))?;
   Ok(OwnershipProofResponse {
     user_id: user.id,
     proof_token,
@@ -55,9 +52,11 @@ pub(crate) fn issue(
 }
 
 pub(crate) fn verify(cfg: &Config, token: &str) -> Result<OwnershipProof, ApiError> {
+  let decoding_key =
+    DecodingKey::from_secret(&signing_key(cfg)).map_err(|e| ApiError::InternalError(e.into()))?;
   decode::<OwnershipProof>(
     token,
-    &DecodingKey::from_secret(&signing_key(cfg)),
+    &decoding_key,
     &Validation {
       leeway: 0,
       ..Validation::default()
@@ -104,7 +103,7 @@ mod tests {
     assert!(
       decode::<crate::modules::auth::guards::auth_guard::Claims>(
         &token.proof_token,
-        &DecodingKey::from_secret(cfg.jwt_secret.expose().as_bytes()),
+        &DecodingKey::from_secret(cfg.jwt_secret.expose().as_bytes()).unwrap(),
         &Validation::default(),
       )
       .is_err()
@@ -126,7 +125,7 @@ mod tests {
     let token = encode(
       &Header::default(),
       &expired,
-      &EncodingKey::from_secret(&signing_key(&cfg)),
+      &EncodingKey::from_secret(&signing_key(&cfg)).unwrap(),
     )
     .unwrap();
     assert!(verify(&cfg, &token).is_err());

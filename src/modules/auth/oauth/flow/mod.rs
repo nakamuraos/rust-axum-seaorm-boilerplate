@@ -55,12 +55,9 @@ impl Flow {
   }
 
   pub fn to_cookie(&self, cfg: &Config) -> Result<String, ApiError> {
-    let jwt = encode(
-      &Header::default(),
-      self,
-      &EncodingKey::from_secret(&signing_key(cfg)),
-    )
-    .map_err(|e| ApiError::InternalError(anyhow!("Failed to sign OAuth state: {}", e)))?;
+    let jwt = EncodingKey::from_secret(&signing_key(cfg))
+      .and_then(|key| encode(&Header::default(), self, &key))
+      .map_err(|e| ApiError::InternalError(anyhow!("Failed to sign OAuth state: {}", e)))?;
 
     Ok(cookie(cfg, &jwt, FLOW_TTL_SECONDS))
   }
@@ -80,13 +77,11 @@ impl Flow {
       })
       .ok_or_else(invalid)?;
 
-    decode::<Flow>(
-      jwt,
-      &DecodingKey::from_secret(&signing_key(cfg)),
-      &Validation::default(),
-    )
-    .map(|data| data.claims)
-    .map_err(|_| invalid())
+    let decoding_key =
+      DecodingKey::from_secret(&signing_key(cfg)).map_err(|e| ApiError::InternalError(e.into()))?;
+    decode::<Flow>(jwt, &decoding_key, &Validation::default())
+      .map(|data| data.claims)
+      .map_err(|_| invalid())
   }
 }
 

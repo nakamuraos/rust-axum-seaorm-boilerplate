@@ -301,12 +301,9 @@ pub(crate) fn generate_token(user: &UserEntities::Model, cfg: &Config) -> Result
     user: user.clone().into(),
   };
 
-  encode(
-    &Header::default(),
-    &claims,
-    &EncodingKey::from_secret(secret.as_bytes()),
-  )
-  .map_err(|e| ApiError::InternalError(anyhow!("Failed to generate token: {}", e)))
+  EncodingKey::from_secret(secret.as_bytes())
+    .and_then(|key| encode(&Header::default(), &claims, &key))
+    .map_err(|e| ApiError::InternalError(anyhow!("Failed to generate token: {}", e)))
 }
 
 #[cfg(test)]
@@ -568,7 +565,7 @@ pub(crate) mod tests {
       if scenario == 2 {
         let claims = jsonwebtoken::decode::<Claims>(
           &result.unwrap().token,
-          &jsonwebtoken::DecodingKey::from_secret(config().jwt_secret.expose().as_bytes()),
+          &jsonwebtoken::DecodingKey::from_secret(config().jwt_secret.expose().as_bytes()).unwrap(),
           &jsonwebtoken::Validation::default(),
         )
         .unwrap()

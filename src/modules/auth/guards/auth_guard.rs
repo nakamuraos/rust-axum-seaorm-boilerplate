@@ -42,12 +42,10 @@ pub async fn auth_guard(
     .ok_or_else(|| ApiError::Unauthorized("Invalid authorization format".to_string()))?;
 
   // Decode and validate the token
-  let token_data = decode::<Claims>(
-    token,
-    &DecodingKey::from_secret(state.cfg.jwt_secret.expose().as_bytes()),
-    &Validation::default(),
-  )
-  .map_err(|_| ApiError::Unauthorized("Invalid token".to_string()))?;
+  let decoding_key = DecodingKey::from_secret(state.cfg.jwt_secret.expose().as_bytes())
+    .map_err(|e| ApiError::InternalError(e.into()))?;
+  let token_data = decode::<Claims>(token, &decoding_key, &Validation::default())
+    .map_err(|_| ApiError::Unauthorized("Invalid token".to_string()))?;
 
   // Check if token is expired
   let now = chrono::Utc::now().timestamp() as usize;
